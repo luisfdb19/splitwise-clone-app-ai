@@ -17,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider afterSignInUrl="/groups" afterSignUpUrl="/groups">
       <html lang="en">
         <body className={montserrat.className}>
           <Navigation />
