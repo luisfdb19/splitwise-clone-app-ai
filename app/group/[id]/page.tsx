@@ -15,9 +15,9 @@ import GroupSettings from '@/components/GroupSettings';
 
 // Define interfaces for Balance and Expense
 interface Balance {
-  name: string;
+  debtor: string;
+  creditor: string;
   amount: number;
-  owes: boolean;
 }
 
 interface Expense {
@@ -185,14 +185,16 @@ function GroupPage() {
                 <Card key={index} className="mb-4">
                   <CardContent className="flex items-center p-6">
                     <div
-                      className={`h-10 w-10 ${getRandomColor()} rounded-full mr-4 flex items-center justify-center text-white font-semibold`}
+                      className={`h-10 w-10 ${getRandomColor()} rounded-full mr-4 flex items-center justify-center text-white font-semibold flex-shrink-0`}
                     >
-                      {getInitials(balance.name)}
+                      {getInitials(balance.debtor)}
                     </div>
                     <div>
-                      <h3 className="font-semibold">{balance.name}</h3>
-                      <p className="text-sm text-gray-600">
-                        Owes you ${formatAmount(balance.amount)}
+                      <h3 className="font-semibold">
+                        {balance.debtor} owes {balance.creditor}
+                      </h3>
+                      <p className="text-sm text-gray-600 font-medium">
+                        ${formatAmount(balance.amount)}
                       </p>
                     </div>
                   </CardContent>
@@ -231,6 +233,11 @@ function GroupPage() {
                           ).toFixed(2)}
                           %
                         </p>
+                        {expense.created_at && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            {new Date(expense.created_at).toLocaleDateString()}
+                          </p>
+                        )}
                       </div>
                     </div>
                     {isAdmin && (

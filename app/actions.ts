@@ -19,9 +19,9 @@ interface ExpenseData {
 }
 
 interface Balance {
-  name: string;
+  debtor: string;
+  creditor: string;
   amount: number;
-  owes: boolean;
 }
 
 interface Expense {
@@ -134,15 +134,38 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
       );
     });
 
-    balanceMap.forEach(({ amount, name }, userId) => {
-      if (userId !== currentUserId && amount < 0) {
-        balances.push({
-          name,
-          amount: Math.abs(amount),
-          owes: true,
-        });
-      }
+    const debtors: { name: string; amount: number }[] = [];
+    const creditors: { name: string; amount: number }[] = [];
+
+    balanceMap.forEach(({ amount, name }) => {
+      if (amount < -0.01) debtors.push({ name, amount: Math.abs(amount) });
+      if (amount > 0.01) creditors.push({ name, amount });
     });
+
+    debtors.sort((a, b) => b.amount - a.amount);
+    creditors.sort((a, b) => b.amount - a.amount);
+
+    let d = 0;
+    let c = 0;
+
+    while (d < debtors.length && c < creditors.length) {
+      const debtor = debtors[d];
+      const creditor = creditors[c];
+      
+      const settledAmount = Math.min(debtor.amount, creditor.amount);
+      
+      balances.push({
+        debtor: debtor.name,
+        creditor: creditor.name,
+        amount: settledAmount
+      });
+      
+      debtor.amount -= settledAmount;
+      creditor.amount -= settledAmount;
+      
+      if (debtor.amount < 0.01) d++;
+      if (creditor.amount < 0.01) c++;
+    }
 
     return { expenses, balances };
   } catch (error) {
