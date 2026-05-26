@@ -76,10 +76,10 @@ export async function addExpense(expenseData: ExpenseData) {
   }
 }
 
-export async function getGroupData(groupId: string, userName: string) {
+export async function getGroupData(groupId: string, currentUserId: string, currentUserName: string) {
   try {
     const expenses = (await sql`
-      SELECT id, amount, description, created_by, split_with
+      SELECT id, amount, description, created_by, split_with, created_at
       FROM expenses
       WHERE group_id = ${groupId}
       ORDER BY created_at DESC
@@ -87,6 +87,19 @@ export async function getGroupData(groupId: string, userName: string) {
 
     const balances: Balance[] = [];
     const balanceMap = new Map<string, { amount: number; name: string }>();
+
+    // Build user mapping from all split members to map user IDs to names
+    const userMap = new Map<string, string>();
+    if (currentUserId && currentUserName) {
+      userMap.set(currentUserId, currentUserName);
+    }
+    expenses.forEach((expense) => {
+      expense.split_with.forEach((member) => {
+        if (member.id && member.name) {
+          userMap.set(member.id, member.name);
+        }
+      });
+    });
 
     expenses.forEach((expense) => {
       const creatorSplit =
@@ -97,34 +110,32 @@ export async function getGroupData(groupId: string, userName: string) {
           0
         );
 
-      // Get creator's name from split_with
-      const creatorName =
-        expense.split_with.find(
-          (m: { name: string }) => m.name === expense.created_by
-        )?.name || 'Unknown';
+      const creatorId = expense.created_by;
+      const creatorName = userMap.get(creatorId) || 'Unknown';
 
       // Update creator's balance
-      const creatorBalance = balanceMap.get(expense.created_by) || {
+      const creatorBalance = balanceMap.get(creatorId) || {
         amount: 0,
         name: creatorName,
       };
       creatorBalance.amount += creatorSplit;
-      balanceMap.set(expense.created_by, creatorBalance);
+      balanceMap.set(creatorId, creatorBalance);
+
       // Update split members' balances
       expense.split_with.forEach(
-        (member: { name: string; splitAmount: number }) => {
-          const memberBalance = balanceMap.get(member.name) || {
+        (member: { id: string; name: string; splitAmount: number }) => {
+          const memberBalance = balanceMap.get(member.id) || {
             amount: 0,
             name: member.name,
           };
           memberBalance.amount -= member.splitAmount;
-          balanceMap.set(member.name, memberBalance);
+          balanceMap.set(member.id, memberBalance);
         }
       );
     });
 
-    balanceMap.forEach(({ amount, name }) => {
-      if (name !== userName && amount < 0) {
+    balanceMap.forEach(({ amount, name }, userId) => {
+      if (userId !== currentUserId && amount < 0) {
         balances.push({
           name,
           amount: Math.abs(amount),
