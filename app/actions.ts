@@ -152,3 +152,36 @@ export async function deleteExpense(expenseId: string) {
     return { success: false };
   }
 }
+
+interface ImportedExpense {
+  amount: number;
+  description: string;
+  groupId: string;
+  splitPercentage: number;
+  splitWith: { id: string; name: string; splitAmount: number }[];
+  createdBy: string;
+  date: string;
+}
+
+export async function importExpenses(expenses: ImportedExpense[]) {
+  try {
+    let importedCount = 0;
+    for (const expense of expenses) {
+      await sql`
+        INSERT INTO expenses (
+          amount, description, group_id, split_percentage, created_by, split_with, created_at
+        )
+        VALUES (
+          ${expense.amount}, ${expense.description}, ${expense.groupId},
+          ${expense.splitPercentage}, ${expense.createdBy},
+          ${JSON.stringify(expense.splitWith)}, ${expense.date}
+        )
+      `;
+      importedCount++;
+    }
+    return { success: true, count: importedCount };
+  } catch (error) {
+    console.error('Error importing expenses:', error);
+    return { success: false, count: 0 };
+  }
+}

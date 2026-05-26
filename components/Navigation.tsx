@@ -36,6 +36,12 @@ export default function Navigation() {
         >
           Add Expense
         </Link>
+        <Link
+          href="/import"
+          className="text-gray-700 hover:text-gray-900 hover:underline"
+        >
+          Importar
+        </Link>
         <UserButton />
       </div>
     </nav>
