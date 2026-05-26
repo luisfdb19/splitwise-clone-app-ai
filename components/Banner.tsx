@@ -11,7 +11,7 @@ export default function Banner() {
           Split expenses with friends in seconds
         </h1>
         <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl mb-8 text-gray-900 p-4">
-          Whether it&apos;s a group trip or dinner, Split makes it easy to track
+          Whether it&apos;s a group trip or dinner, Mixiwise makes it easy to track
           shared expenses and settle up in a single tap.
         </p>
         <Link href="/group">
