@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Trash2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
-import { useOrganizationList, useUser } from '@clerk/nextjs';
+import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 import { getGroupData, deleteExpense } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -37,18 +37,28 @@ const formatAmount = (amount: number | string) => {
 
 function GroupPage() {
   const { id } = useParams();
-  const { userMemberships, isLoaded: orgLoaded } = useOrganizationList({
-    userMemberships: {
-      infinite: true,
-    },
-  });
+  const { setActive } = useOrganizationList();
+  const { organization, membership, isLoaded: orgLoaded } = useOrganization();
   const { user, isLoaded: userLoaded } = useUser();
   const router = useRouter();
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [orgReady, setOrgReady] = useState(false);
   const { toast } = useToast();
+
+  // Set the active organization based on the URL id
+  useEffect(() => {
+    if (setActive && id) {
+      setActive({ organization: id as string }).then(() => {
+        setOrgReady(true);
+      }).catch((err) => {
+        console.error('Error setting active organization:', err);
+        setOrgReady(true); // still mark ready so we can show error
+      });
+    }
+  }, [setActive, id]);
 
   useEffect(() => {
     async function fetchData() {
@@ -62,12 +72,12 @@ function GroupPage() {
         setLoading(false);
       }
     }
-    if (userLoaded) {
+    if (userLoaded && orgReady) {
       fetchData();
     }
-  }, [id, user, userLoaded]);
+  }, [id, user, userLoaded, orgReady]);
 
-  if (!orgLoaded || !userLoaded || loading) {
+  if (!orgLoaded || !userLoaded || loading || !orgReady) {
     return (
       <div className="flex justify-center items-center h-screen">
         <p className="text-xl text-gray-600">Loading...</p>
@@ -75,18 +85,14 @@ function GroupPage() {
     );
   }
 
-  const selectedOrganization = userMemberships.data?.find(
-    (membership) => membership.organization.id === id
-  );
-
-  if (!selectedOrganization) {
+  if (!organization) {
     return <div>Organization not found</div>;
   }
 
-  // Update the isAdmin check to match the groups page
-  const isAdmin = selectedOrganization?.role === 'org:admin';
+  // Check admin role from the active membership
+  const isAdmin = membership?.role === 'org:admin';
 
-  console.log('Selected Organization:', selectedOrganization);
+  console.log('Active Organization:', organization);
   console.log('Is Admin:', isAdmin);
 
   const groupDescription =
@@ -144,7 +150,7 @@ function GroupPage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold mb-4">
-          {selectedOrganization.organization.name}
+          {organization.name}
         </h1>
 
         <Link href="/groups">
