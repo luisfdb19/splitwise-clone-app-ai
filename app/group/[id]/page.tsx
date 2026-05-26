@@ -1,10 +1,10 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pencil } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
-import { getGroupData, deleteExpense } from '@/app/actions';
+import { getGroupData, deleteExpense, updateExpense } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,16 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import GroupMembers from '@/components/GroupMembers';
 import GroupSettings from '@/components/GroupSettings';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 // Define interfaces for Balance and Expense
 interface Balance {
@@ -31,6 +41,7 @@ interface Expense {
     splitAmount: number;
   }[];
   created_at?: string;
+  split_percentage?: number;
 }
 
 // Add this utility function at the top of the file, outside the component
@@ -51,6 +62,38 @@ function GroupPage() {
   const [loading, setLoading] = useState(true);
   const [orgReady, setOrgReady] = useState(false);
   const { toast } = useToast();
+
+  // State for editing expense
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editAmount, setEditAmount] = useState<string>('');
+  const [editDescription, setEditDescription] = useState<string>('');
+  const [editSplitPercentage, setEditSplitPercentage] = useState<string>('');
+  const [editSplitWith, setEditSplitWith] = useState<{ id: string; name: string }[]>([]);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch organization members to allow selection on editing split
+  useEffect(() => {
+    async function fetchOrgMembers() {
+      if (organization) {
+        try {
+          const memberships = await organization.getMemberships();
+          const membersList = memberships.data.map((m) => ({
+            id: m.publicUserData.userId ?? '',
+            name: `${m.publicUserData.firstName ?? ''} ${
+              m.publicUserData.lastName ?? ''
+            }`.trim(),
+          }));
+          setMembers(membersList);
+        } catch (err) {
+          console.error('Error fetching memberships:', err);
+        }
+      }
+    }
+    if (orgLoaded && organization) {
+      fetchOrgMembers();
+    }
+  }, [organization, orgLoaded]);
 
   // Set the active organization based on the URL id
   useEffect(() => {
@@ -120,6 +163,29 @@ function GroupPage() {
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
+  const getGroupedExpenses = (expensesList: Expense[]) => {
+    const groupsMap = new Map<string, Expense[]>();
+    expensesList.forEach((expense) => {
+      const date = expense.created_at
+        ? new Date(expense.created_at).toLocaleDateString('pt-BR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })
+        : 'Sem data';
+      if (!groupsMap.has(date)) {
+        groupsMap.set(date, []);
+      }
+      groupsMap.get(date)!.push(expense);
+    });
+
+    const grouped: { date: string; items: Expense[] }[] = [];
+    groupsMap.forEach((items, date) => {
+      grouped.push({ date, items });
+    });
+    return grouped;
+  };
+
   const handleDeleteExpense = async (expenseId: string) => {
     if (!isAdmin) {
       toast({
@@ -145,6 +211,48 @@ function GroupPage() {
       } else {
         toast({ title: 'Failed to delete expense. Please try again.' });
       }
+    }
+  };
+
+  const handleSaveEditExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+
+    if (!editAmount || !editDescription || !editSplitPercentage || editSplitWith.length === 0) {
+      toast({
+        title: 'Error 🚨',
+        description: 'Please fill in all fields and select at least one member to split with.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const result = await updateExpense(editingExpense.id, {
+      amount: parseFloat(editAmount),
+      description: editDescription,
+      splitPercentage: parseFloat(editSplitPercentage),
+      splitWith: editSplitWith,
+    });
+
+    if (result.success) {
+      toast({
+        title: 'Expense Updated! 🎉',
+        description: 'Your changes have been successfully saved.',
+      });
+      setIsEditDialogOpen(false);
+      setEditingExpense(null);
+      // Refresh data
+      const { expenses: updatedExpenses, balances: updatedBalances } =
+        await getGroupData(id as string, user?.id || '', user?.fullName || 'You');
+      setExpenses(updatedExpenses);
+      setBalances(updatedBalances);
+      router.refresh();
+    } else {
+      toast({
+        title: 'Error 🚨',
+        description: 'Failed to update expense. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -208,47 +316,67 @@ function GroupPage() {
           </div>
 
           <div>
-            <h2 className="text-2xl font-semibold mb-4">Expenses</h2>
+            <h2 className="text-2xl font-semibold mb-6">Expenses</h2>
             {expenses.length > 0 ? (
-              expenses.map((expense) => (
-                <Card key={expense.id} className="mb-4">
-                  <CardContent className="flex items-center justify-between p-6">
-                    <div className="flex items-center">
-                      <div
-                        className={`h-10 w-10 ${getRandomColor()} rounded-full mr-4 flex items-center justify-center text-white font-semibold`}
-                      >
-                        {getInitials(expense.description)}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold">{expense.description}</h3>
-                        <p className="text-sm text-gray-600">
-                          ${formatAmount(expense.amount)} ·
-                          {expense.split_with.map((s) => s.name).join(', ')}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Split type: Percentage{' '}
-                          {(
-                            (expense.split_with[0]?.splitAmount / expense.amount) *
-                            100
-                          ).toFixed(2)}
-                          %
-                        </p>
-                        {expense.created_at && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            {new Date(expense.created_at).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {isAdmin && (
-                      <Trash2
-                        className="text-red-500 cursor-pointer hover:text-red-700 transition-colors"
-                        size={20}
-                        onClick={() => handleDeleteExpense(expense.id)}
-                      />
-                    )}
-                  </CardContent>
-                </Card>
+              getGroupedExpenses(expenses).map((group) => (
+                <div key={group.date} className="mb-8">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xs font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-100">
+                      {group.date}
+                    </span>
+                    <div className="h-px bg-gray-100 flex-grow" />
+                  </div>
+                  <div className="space-y-4">
+                    {group.items.map((expense) => (
+                      <Card key={expense.id} className="hover:shadow-md transition-shadow">
+                        <CardContent className="flex items-center justify-between p-6">
+                          <div className="flex items-center">
+                            <div
+                              className={`h-10 w-10 ${getRandomColor()} rounded-full mr-4 flex items-center justify-center text-white font-semibold`}
+                            >
+                              {getInitials(expense.description)}
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{expense.description}</h3>
+                              <p className="text-sm text-gray-600">
+                                ${formatAmount(expense.amount)} · {expense.split_with.map((s) => s.name).join(', ')}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Split type: Percentage{' '}
+                                {(
+                                  (expense.split_with[0]?.splitAmount / expense.amount) *
+                                  100
+                                ).toFixed(2)}
+                                %
+                              </p>
+                            </div>
+                          </div>
+                          {isAdmin && (
+                            <div className="flex items-center gap-3">
+                              <Pencil
+                                className="text-blue-500 cursor-pointer hover:text-blue-700 transition-colors"
+                                size={20}
+                                onClick={() => {
+                                  setEditingExpense(expense);
+                                  setEditAmount(expense.amount.toString());
+                                  setEditDescription(expense.description);
+                                  setEditSplitPercentage(expense.split_percentage ? expense.split_percentage.toString() : '50');
+                                  setEditSplitWith(expense.split_with.map((m) => ({ id: m.id, name: m.name })));
+                                  setIsEditDialogOpen(true);
+                                }}
+                              />
+                              <Trash2
+                                className="text-red-500 cursor-pointer hover:text-red-700 transition-colors"
+                                size={20}
+                                onClick={() => handleDeleteExpense(expense.id)}
+                              />
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
               ))
             ) : (
               <p className="text-gray-600">
@@ -268,6 +396,97 @@ function GroupPage() {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Edit Expense Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Expense</DialogTitle>
+            <DialogDescription>
+              Update details for this expense and adjust the split.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveEditExpense} className="space-y-4">
+            <div>
+              <Label htmlFor="edit-amount">Amount</Label>
+              <Input
+                id="edit-amount"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="edit-description">Description</Label>
+              <Input
+                id="edit-description"
+                placeholder="What did you pay for?"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="edit-splitPercentage">Split Percentage</Label>
+              <Input
+                id="edit-splitPercentage"
+                type="number"
+                placeholder="Enter percentage to split"
+                value={editSplitPercentage}
+                onChange={(e) => setEditSplitPercentage(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Split with</Label>
+              <div className="max-h-40 overflow-y-auto border rounded-md p-3 space-y-2">
+                {members.map((member) => {
+                  const isChecked = editSplitWith.some((m) => m.id === member.id);
+                  return (
+                    <div key={member.id} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={`edit-member-${member.id}`}
+                        checked={isChecked}
+                        onChange={() => {
+                          if (isChecked) {
+                            setEditSplitWith(editSplitWith.filter((m) => m.id !== member.id));
+                          } else {
+                            setEditSplitWith([...editSplitWith, member]);
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                      />
+                      <label
+                        htmlFor={`edit-member-${member.id}`}
+                        className="text-sm font-medium leading-none cursor-pointer"
+                      >
+                        {member.name}
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

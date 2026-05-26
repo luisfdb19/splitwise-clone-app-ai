@@ -34,6 +34,8 @@ interface Expense {
     name: string;
     splitAmount: number;
   }[];
+  created_at?: string;
+  split_percentage?: number;
 }
 
 export async function addExpense(expenseData: ExpenseData) {
@@ -79,7 +81,7 @@ export async function addExpense(expenseData: ExpenseData) {
 export async function getGroupData(groupId: string, currentUserId: string, currentUserName: string) {
   try {
     const expenses = (await sql`
-      SELECT id, amount, description, created_by, split_with, created_at
+      SELECT id, amount, description, created_by, split_with, created_at, split_percentage
       FROM expenses
       WHERE group_id = ${groupId}
       ORDER BY created_at DESC
@@ -183,6 +185,39 @@ export async function deleteExpense(expenseId: string) {
     return { success: true };
   } catch (error) {
     console.error('Error deleting expense:', error);
+    return { success: false };
+  }
+}
+
+export async function updateExpense(expenseId: string, expenseData: {
+  amount: number;
+  description: string;
+  splitPercentage: number;
+  splitWith: SplitMember[];
+}) {
+  const { amount, description, splitPercentage, splitWith } = expenseData;
+
+  try {
+    const splitAmount = (amount * (splitPercentage / 100)) / splitWith.length;
+
+    const splitWithInfo = splitWith.map((member) => ({
+      id: member.id,
+      name: member.name,
+      splitAmount: splitAmount,
+    }));
+
+    await sql`
+      UPDATE expenses
+      SET amount = ${amount},
+          description = ${description},
+          split_percentage = ${splitPercentage},
+          split_with = ${JSON.stringify(splitWithInfo)}
+      WHERE id = ${expenseId}
+    `;
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating expense:', error);
     return { success: false };
   }
 }
