@@ -58,6 +58,7 @@ export default function GroupPage() {
   const { toast } = useToast();
 
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
 
   // Fetch organization members to pass to AddExpenseDialog
@@ -144,10 +145,6 @@ export default function GroupPage() {
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
-    if (!isAdmin) {
-      toast({ title: 'Error', description: 'Only admins can delete expenses.', variant: 'destructive' });
-      return;
-    }
     if (window.confirm('Are you sure you want to delete this?')) {
       const result = await deleteExpense(expenseId);
       if (result.success) {
@@ -291,7 +288,14 @@ export default function GroupPage() {
                   }
 
                   return (
-                    <Card key={expense.id} className="shadow-sm hover:bg-gray-50 transition-colors border-0 ring-1 ring-gray-200">
+                    <Card 
+                      key={expense.id} 
+                      className="shadow-sm hover:bg-gray-100 transition-colors border-0 ring-1 ring-gray-200 cursor-pointer"
+                      onClick={() => {
+                        setEditingExpense(expense);
+                        setIsAddExpenseOpen(true);
+                      }}
+                    >
                       <CardContent className="flex items-center justify-between p-4 py-3">
                         <div className="flex items-center flex-grow">
                           <div className="flex flex-col items-center justify-center mr-4 w-12 flex-shrink-0 text-center">
@@ -329,21 +333,25 @@ export default function GroupPage() {
                               variant="ghost"
                               size="icon"
                               className="text-gray-400 hover:text-teal-600 hover:bg-teal-50 flex-shrink-0"
-                              onClick={() => setSelectedReceipt({ data: expense.receipt_data!, type: expense.receipt_type || 'image/jpeg' })}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedReceipt({ data: expense.receipt_data!, type: expense.receipt_type || 'image/jpeg' });
+                              }}
                             >
                               <Paperclip size={18} />
                             </Button>
                           )}
-                          {isAdmin && (
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-gray-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
-                              onClick={() => handleDeleteExpense(expense.id)}
-                            >
-                              <Trash2 size={18} />
-                            </Button>
-                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-gray-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteExpense(expense.id);
+                            }}
+                          >
+                            <Trash2 size={18} />
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>
@@ -369,10 +377,14 @@ export default function GroupPage() {
 
       <AddExpenseDialog
         isOpen={isAddExpenseOpen}
-        onClose={() => setIsAddExpenseOpen(false)}
+        onClose={() => {
+          setIsAddExpenseOpen(false);
+          setEditingExpense(null);
+        }}
         groupId={id as string}
         members={members}
         currentUser={user ? { id: user.id, fullName: user.fullName, firstName: user.firstName } : null}
+        expenseToEdit={editingExpense}
         onSuccess={async () => {
           if (id && user) {
             const { expenses: updatedExpenses, balances: updatedBalances } = await getGroupData(

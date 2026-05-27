@@ -115,8 +115,10 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
 
     // Build user mapping from all split members to map user IDs to names
     const userMap = new Map<string, string>();
+    const canonicalIdMap = new Map<string, string>();
     if (currentUserId && currentUserName) {
       userMap.set(currentUserId, nicknameMap.get(currentUserId) || currentUserName);
+      canonicalIdMap.set(currentUserId, currentUserId);
     }
 
     // Fetch actual organization members from Clerk to map names, emails, and slugs to nicknames
@@ -134,10 +136,22 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
 
         const resolvedName = nicknameMap.get(userId || '') || nicknameMap.get(email || '') || nicknameMap.get(slug) || name;
 
-        if (userId) userMap.set(userId, resolvedName);
-        if (email) userMap.set(email.toLowerCase(), resolvedName);
-        if (slug) userMap.set(slug, resolvedName);
-        if (lowerName) userMap.set(lowerName, resolvedName);
+        if (userId) {
+          userMap.set(userId, resolvedName);
+          canonicalIdMap.set(userId, userId);
+        }
+        if (email) {
+          userMap.set(email.toLowerCase(), resolvedName);
+          if (userId) canonicalIdMap.set(email.toLowerCase(), userId);
+        }
+        if (slug) {
+          userMap.set(slug, resolvedName);
+          if (userId) canonicalIdMap.set(slug, userId);
+        }
+        if (lowerName) {
+          userMap.set(lowerName, resolvedName);
+          if (userId) canonicalIdMap.set(lowerName, userId);
+        }
       });
     } catch (err) {
       console.error('Error fetching org members from Clerk:', err);
@@ -170,7 +184,7 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
         0
       );
 
-      const creatorId = expense.created_by;
+      const creatorId = canonicalIdMap.get(expense.created_by) || expense.created_by;
       const creatorName = userMap.get(creatorId) || 'Unknown';
 
       // Update creator's balance
@@ -184,12 +198,13 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
       // Update split members' balances
       expense.split_with.forEach(
         (member: { id: string; name: string; splitAmount: number }) => {
-          const memberBalance = balanceMap.get(member.id) || {
+          const canonicalMemberId = canonicalIdMap.get(member.id) || member.id;
+          const memberBalance = balanceMap.get(canonicalMemberId) || {
             amount: 0,
             name: member.name,
           };
           memberBalance.amount -= member.splitAmount;
-          balanceMap.set(member.id, memberBalance);
+          balanceMap.set(canonicalMemberId, memberBalance);
         }
       );
     });
@@ -252,8 +267,10 @@ export async function updateExpense(expenseId: string, expenseData: {
   description: string;
   splitPercentage: number;
   splitWith: SplitMember[];
+  createdBy?: string;
+  createdAt?: string;
 }) {
-  const { amount, description, splitPercentage, splitWith } = expenseData;
+  const { amount, description, splitPercentage, splitWith, createdBy, createdAt } = expenseData;
 
   try {
     const splitAmount = (amount * (splitPercentage / 100)) / splitWith.length;
@@ -264,14 +281,49 @@ export async function updateExpense(expenseId: string, expenseData: {
       splitAmount: splitAmount,
     }));
 
-    await sql`
-      UPDATE expenses
-      SET amount = ${amount},
-          description = ${description},
-          split_percentage = ${splitPercentage},
-          split_with = ${JSON.stringify(splitWithInfo)}
-      WHERE id = ${expenseId}
-    `;
+    const dateValue = createdAt ? new Date(createdAt) : null;
+
+    if (createdBy && dateValue) {
+      await sql`
+        UPDATE expenses
+        SET amount = ${amount},
+            description = ${description},
+            split_percentage = ${splitPercentage},
+            split_with = ${JSON.stringify(splitWithInfo)},
+            created_by = ${createdBy},
+            created_at = ${dateValue}
+        WHERE id = ${expenseId}
+      `;
+    } else if (createdBy) {
+      await sql`
+        UPDATE expenses
+        SET amount = ${amount},
+            description = ${description},
+            split_percentage = ${splitPercentage},
+            split_with = ${JSON.stringify(splitWithInfo)},
+            created_by = ${createdBy}
+        WHERE id = ${expenseId}
+      `;
+    } else if (dateValue) {
+      await sql`
+        UPDATE expenses
+        SET amount = ${amount},
+            description = ${description},
+            split_percentage = ${splitPercentage},
+            split_with = ${JSON.stringify(splitWithInfo)},
+            created_at = ${dateValue}
+        WHERE id = ${expenseId}
+      `;
+    } else {
+      await sql`
+        UPDATE expenses
+        SET amount = ${amount},
+            description = ${description},
+            split_percentage = ${splitPercentage},
+            split_with = ${JSON.stringify(splitWithInfo)}
+        WHERE id = ${expenseId}
+      `;
+    }
 
     return { success: true };
   } catch (error) {

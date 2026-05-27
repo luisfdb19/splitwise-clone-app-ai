@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { FileText, Calendar, Plus, X, Paperclip } from 'lucide-react';
-import { addExpense } from '@/app/actions';
+import { addExpense, updateExpense } from '@/app/actions';
 
 const formatAmount = (amount: number | string) => {
   const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
@@ -20,6 +20,25 @@ const formatAmount = (amount: number | string) => {
 interface Member {
   id: string;
   name: string;
+}
+
+interface SplitWithMember {
+  id: string;
+  name: string;
+  splitAmount: number;
+}
+
+interface ExpenseToEdit {
+  id: string;
+  amount: number;
+  description: string;
+  created_by: string;
+  created_by_name?: string;
+  split_with: SplitWithMember[];
+  created_at?: string;
+  receipt_data?: string;
+  receipt_type?: string;
+  split_percentage?: number;
 }
 
 interface AddExpenseDialogProps {
@@ -33,6 +52,7 @@ interface AddExpenseDialogProps {
     firstName: string | null;
   } | null;
   onSuccess: () => void;
+  expenseToEdit?: ExpenseToEdit | null;
 }
 
 export default function AddExpenseDialog({
@@ -42,6 +62,7 @@ export default function AddExpenseDialog({
   members,
   currentUser,
   onSuccess,
+  expenseToEdit,
 }: AddExpenseDialogProps) {
   const { toast } = useToast();
   const [description, setDescription] = useState('');
@@ -72,23 +93,42 @@ export default function AddExpenseDialog({
   // Initialize selected members to all group members by default
   useEffect(() => {
     if (isOpen) {
-      setSelectedMembers(members);
-      if (currentUser) {
-        setPayerId(currentUser.id);
-      } else if (members.length > 0) {
-        setPayerId(members[0].id);
+      if (expenseToEdit) {
+        setDescription(expenseToEdit.description);
+        setAmount(expenseToEdit.amount.toString());
+        setSelectedMembers(
+          members.filter((m) =>
+            expenseToEdit.split_with.some((se: SplitWithMember) => se.id === m.id)
+          )
+        );
+        setPayerId(expenseToEdit.created_by);
+        setSplitType(expenseToEdit.split_percentage ? 'percentage' : 'equal');
+        setSplitMode('split');
+        setDate(
+          expenseToEdit.created_at
+            ? new Date(expenseToEdit.created_at).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0]
+        );
+        setReceiptData(expenseToEdit.receipt_data || null);
+        setReceiptType(expenseToEdit.receipt_type || null);
+      } else {
+        setSelectedMembers(members);
+        if (currentUser) {
+          setPayerId(currentUser.id);
+        } else if (members.length > 0) {
+          setPayerId(members[0].id);
+        }
+        setDescription('');
+        setAmount('');
+        setSplitType('equal');
+        setSplitMode('split');
+        setCustomPercentages({});
+        setDate(new Date().toISOString().split('T')[0]);
+        setReceiptData(null);
+        setReceiptType(null);
       }
-      // Reset form fields
-      setDescription('');
-      setAmount('');
-      setSplitType('equal');
-      setSplitMode('split');
-      setCustomPercentages({});
-      setDate(new Date().toISOString().split('T')[0]);
-      setReceiptData(null);
-      setReceiptType(null);
     }
-  }, [isOpen, members, currentUser]);
+  }, [isOpen, members, currentUser, expenseToEdit]);
 
   const numAmount = parseFloat(amount) || 0;
   const isMe = (id: string) => currentUser && id === currentUser.id;
@@ -138,24 +178,43 @@ export default function AddExpenseDialog({
       }
     }
 
-    const result = await addExpense({
-      amount: numAmount,
-      description,
-      groupId,
-      splitPercentage: 100, // 100% of expense total is split
-      splitWith: finalSplitWith,
-      createdBy: payerId,
-      createdAt: new Date(date + 'T12:00:00').toISOString(),
-      receiptData: receiptData || undefined,
-      receiptType: receiptType || undefined,
-    });
+    if (expenseToEdit) {
+      const result = await updateExpense(expenseToEdit.id, {
+        amount: numAmount,
+        description,
+        splitPercentage: 100,
+        splitWith: finalSplitWith,
+        createdBy: payerId,
+        createdAt: new Date(date + 'T12:00:00').toISOString(),
+      });
 
-    if (result.success) {
-      toast({ title: 'Sucesso! 🎉', description: 'Despesa adicionada com sucesso.' });
-      onSuccess();
-      onClose();
+      if (result.success) {
+        toast({ title: 'Sucesso! 🎉', description: 'Despesa atualizada com sucesso.' });
+        onSuccess();
+        onClose();
+      } else {
+        toast({ title: 'Erro', description: 'Falha ao atualizar despesa.', variant: 'destructive' });
+      }
     } else {
-      toast({ title: 'Erro', description: 'Falha ao adicionar despesa.', variant: 'destructive' });
+      const result = await addExpense({
+        amount: numAmount,
+        description,
+        groupId,
+        splitPercentage: 100, // 100% of expense total is split
+        splitWith: finalSplitWith,
+        createdBy: payerId,
+        createdAt: new Date(date + 'T12:00:00').toISOString(),
+        receiptData: receiptData || undefined,
+        receiptType: receiptType || undefined,
+      });
+
+      if (result.success) {
+        toast({ title: 'Sucesso! 🎉', description: 'Despesa adicionada com sucesso.' });
+        onSuccess();
+        onClose();
+      } else {
+        toast({ title: 'Erro', description: 'Falha ao adicionar despesa.', variant: 'destructive' });
+      }
     }
   };
 
@@ -175,7 +234,9 @@ export default function AddExpenseDialog({
       <DialogContent className="max-w-md p-0 overflow-hidden border-0 rounded-xl shadow-2xl">
         {/* Header matching Splitwise's teal style */}
         <DialogHeader className="bg-teal-500 text-white p-4 flex flex-row items-center justify-between space-y-0">
-          <DialogTitle className="text-xl font-bold text-white">Adicionar despesa</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-white">
+            {expenseToEdit ? 'Editar despesa' : 'Adicionar despesa'}
+          </DialogTitle>
           <button onClick={onClose} className="text-white/80 hover:text-white transition-colors">
             <X size={20} />
           </button>
