@@ -77,6 +77,7 @@ export default function AddExpenseDialog({
   const [receiptType, setReceiptType] = useState<string | null>(null);
   
   const [showPayerDropdown, setShowPayerDropdown] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -92,7 +93,13 @@ export default function AddExpenseDialog({
 
   // Initialize selected members to all group members by default
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) {
+      setHasInitialized(false);
+      return;
+    }
+
+    if (isOpen && !hasInitialized) {
+      setHasInitialized(true);
       if (expenseToEdit) {
         setDescription(expenseToEdit.description);
         setAmount(expenseToEdit.amount.toString());
@@ -102,7 +109,26 @@ export default function AddExpenseDialog({
           )
         );
         setPayerId(expenseToEdit.created_by);
-        setSplitType(expenseToEdit.split_percentage ? 'percentage' : 'equal');
+        
+        // Detect custom percentages
+        if (expenseToEdit.split_with && expenseToEdit.amount > 0) {
+          const pcts: { [id: string]: string } = {};
+          let isPercentageSplit = false;
+          expenseToEdit.split_with.forEach((member: SplitWithMember) => {
+            const pctVal = (member.splitAmount / expenseToEdit.amount) * 100;
+            pcts[member.id] = pctVal.toFixed(2);
+            const equalShare = expenseToEdit.amount / expenseToEdit.split_with.length;
+            if (Math.abs(member.splitAmount - equalShare) > 0.05) {
+              isPercentageSplit = true;
+            }
+          });
+          setCustomPercentages(pcts);
+          setSplitType(isPercentageSplit ? 'percentage' : 'equal');
+        } else {
+          setSplitType(expenseToEdit.split_percentage ? 'percentage' : 'equal');
+          setCustomPercentages({});
+        }
+
         setSplitMode('split');
         setDate(
           expenseToEdit.created_at
@@ -128,7 +154,7 @@ export default function AddExpenseDialog({
         setReceiptType(null);
       }
     }
-  }, [isOpen, members, currentUser, expenseToEdit]);
+  }, [isOpen, hasInitialized, members, currentUser, expenseToEdit]);
 
   const numAmount = parseFloat(amount) || 0;
   const isMe = (id: string) => currentUser && id === currentUser.id;
@@ -178,12 +204,35 @@ export default function AddExpenseDialog({
       }
     }
 
+    // Calculate split amounts and map each member to SplitMember
+    const splitWithWithAmounts = finalSplitWith.map((member) => {
+      let memberSplitAmount = 0;
+      if (splitMode === 'you-owe-all') {
+        memberSplitAmount = isMe(member.id) ? numAmount : 0;
+      } else if (splitMode === 'they-owe-all') {
+        const othersCount = selectedMembers.filter(m => !isMe(m.id)).length;
+        memberSplitAmount = !isMe(member.id) && othersCount > 0 ? numAmount / othersCount : 0;
+      } else { // splitMode === 'split'
+        if (splitType === 'equal') {
+          memberSplitAmount = finalSplitWith.length > 0 ? numAmount / finalSplitWith.length : 0;
+        } else { // percentage
+          const pct = parseFloat(customPercentages[member.id]) || 0;
+          memberSplitAmount = (numAmount * pct) / 100;
+        }
+      }
+      return {
+        id: member.id,
+        name: member.name,
+        splitAmount: memberSplitAmount,
+      };
+    });
+
     if (expenseToEdit) {
       const result = await updateExpense(expenseToEdit.id, {
         amount: numAmount,
         description,
         splitPercentage: 100,
-        splitWith: finalSplitWith,
+        splitWith: splitWithWithAmounts,
         createdBy: payerId,
         createdAt: new Date(date + 'T12:00:00').toISOString(),
       });
@@ -201,7 +250,7 @@ export default function AddExpenseDialog({
         description,
         groupId,
         splitPercentage: 100, // 100% of expense total is split
-        splitWith: finalSplitWith,
+        splitWith: splitWithWithAmounts,
         createdBy: payerId,
         createdAt: new Date(date + 'T12:00:00').toISOString(),
         receiptData: receiptData || undefined,

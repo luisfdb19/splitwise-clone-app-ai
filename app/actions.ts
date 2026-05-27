@@ -8,6 +8,7 @@ const sql = neon(process.env.DATABASE_URL!);
 interface SplitMember {
   id: string;
   name: string;
+  splitAmount?: number;
 }
 
 interface NicknameRow {
@@ -64,14 +65,11 @@ export async function addExpense(expenseData: ExpenseData) {
   } = expenseData;
 
   try {
-    // Calculate split amount for each member
-    const splitAmount = (amount * (splitPercentage / 100)) / splitWith.length;
-
     // Create a JSON object with member information and split amounts
     const splitWithInfo = splitWith.map((member) => ({
       id: member.id,
       name: member.name,
-      splitAmount: splitAmount,
+      splitAmount: member.splitAmount !== undefined ? member.splitAmount : (amount * (splitPercentage / 100)) / splitWith.length,
     }));
 
     // Insert the expense with optional date and receipts
@@ -273,12 +271,10 @@ export async function updateExpense(expenseId: string, expenseData: {
   const { amount, description, splitPercentage, splitWith, createdBy, createdAt } = expenseData;
 
   try {
-    const splitAmount = (amount * (splitPercentage / 100)) / splitWith.length;
-
     const splitWithInfo = splitWith.map((member) => ({
       id: member.id,
       name: member.name,
-      splitAmount: splitAmount,
+      splitAmount: member.splitAmount !== undefined ? member.splitAmount : (amount * (splitPercentage / 100)) / splitWith.length,
     }));
 
     const dateValue = createdAt ? new Date(createdAt) : null;
