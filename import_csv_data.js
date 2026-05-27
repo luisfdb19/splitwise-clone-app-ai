@@ -1,5 +1,5 @@
 const { neon } = require('@neondatabase/serverless');
-const sql = neon('postgresql://neondb_owner:npg_PKB5q9bygzEr@ep-fragrant-scene-ac94ikf6.sa-east-1.aws.neon.tech/neondb?sslmode=require');
+const sql = neon(process.env.DATABASE_URL);
 
 const csv = `Data,Descrição,Categoria,Custo,Moeda,Ellen Provesi Rampeloti,Luís Fernando Della Bruna
 2026-01-05,Veg 2 dias,Mercado,63.83,BRL,-63.83,63.83
