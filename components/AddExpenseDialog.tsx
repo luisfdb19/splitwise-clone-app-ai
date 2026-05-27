@@ -567,6 +567,59 @@ export default function AddExpenseDialog({
             </label>
           </div>
 
+          {receiptData && (
+            <div className="border rounded-lg p-2.5 bg-gray-50 flex items-center justify-between gap-3 shadow-inner">
+              <div className="flex items-center gap-2 min-w-0">
+                {receiptType?.includes('pdf') ? (
+                  <div className="w-10 h-10 bg-red-100 text-red-700 rounded flex items-center justify-center font-bold text-xs flex-shrink-0 border border-red-200">
+                    PDF
+                  </div>
+                ) : (
+                  <img
+                    src={receiptData}
+                    alt="Receipt preview"
+                    className="w-10 h-10 object-cover rounded border flex-shrink-0"
+                  />
+                )}
+                <span className="text-[11px] font-semibold text-gray-500 truncate">
+                  {receiptType?.includes('pdf') ? 'documento_recibo.pdf' : 'imagem_recibo.jpg'}
+                </span>
+              </div>
+              <div className="flex gap-1.5 flex-shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-[11px] text-teal-600 hover:text-teal-700 font-bold px-2.5 hover:bg-teal-50"
+                  onClick={() => {
+                    const win = window.open();
+                    if (win) {
+                      win.document.write(
+                        receiptType?.includes('pdf')
+                          ? `<iframe src="${receiptData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`
+                          : `<img src="${receiptData}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />`
+                      );
+                    }
+                  }}
+                >
+                  Visualizar
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                  onClick={() => {
+                    setReceiptData(null);
+                    setReceiptType(null);
+                  }}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Action buttons Cancel / Save */}
           <div className="flex gap-3 justify-end pt-2">
             <Button
