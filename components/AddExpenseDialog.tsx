@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { FileText, Calendar, Plus, X, Paperclip } from 'lucide-react';
-import { addExpense, updateExpense } from '@/app/actions';
+import { addExpense, updateExpense, createRecurringExpense } from '@/app/actions';
 
 const formatAmount = (amount: number | string) => {
   const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
@@ -78,6 +78,12 @@ export default function AddExpenseDialog({
   
   const [showPayerDropdown, setShowPayerDropdown] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Recurring / Installments state
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceInterval, setRecurrenceInterval] = useState<'month' | 'year'>('month');
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentsCount, setInstallmentsCount] = useState('12');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -152,6 +158,10 @@ export default function AddExpenseDialog({
         setDate(new Date().toISOString().split('T')[0]);
         setReceiptData(null);
         setReceiptType(null);
+        setIsRecurring(false);
+        setRecurrenceInterval('month');
+        setIsInstallment(false);
+        setInstallmentsCount('12');
       }
     }
   }, [isOpen, hasInitialized, members, currentUser, expenseToEdit]);
@@ -245,24 +255,85 @@ export default function AddExpenseDialog({
         toast({ title: 'Erro', description: 'Falha ao atualizar despesa.', variant: 'destructive' });
       }
     } else {
-      const result = await addExpense({
-        amount: numAmount,
-        description,
-        groupId,
-        splitPercentage: 100, // 100% of expense total is split
-        splitWith: splitWithWithAmounts,
-        createdBy: payerId,
-        createdAt: new Date(date + 'T12:00:00').toISOString(),
-        receiptData: receiptData || undefined,
-        receiptType: receiptType || undefined,
-      });
+      if (isRecurring) {
+        const count = isInstallment ? (parseInt(installmentsCount) || 2) : 1;
+        const finalAmount = isInstallment ? numAmount / count : numAmount;
+        const totalInst = isInstallment ? count : null;
+        const initialDescription = isInstallment ? `${description} (1/${count})` : description;
 
-      if (result.success) {
-        toast({ title: 'Sucesso! 🎉', description: 'Despesa adicionada com sucesso.' });
-        onSuccess();
-        onClose();
+        // Calculate mapped split amount for first installment
+        const firstSplitWith = splitWithWithAmounts.map(m => ({
+          id: m.id,
+          name: m.name,
+          splitAmount: isInstallment ? m.splitAmount / count : m.splitAmount
+        }));
+
+        // 1. Add the first occurrence to the database immediately
+        const firstResult = await addExpense({
+          amount: finalAmount,
+          description: initialDescription,
+          groupId,
+          splitPercentage: 100,
+          splitWith: firstSplitWith,
+          createdBy: payerId,
+          createdAt: new Date(date + 'T12:00:00').toISOString(),
+          receiptData: receiptData || undefined,
+          receiptType: receiptType || undefined,
+        });
+
+        if (!firstResult.success) {
+          toast({ title: 'Erro', description: 'Falha ao adicionar despesa inicial.', variant: 'destructive' });
+          return;
+        }
+
+        // 2. Set the next occurrence date
+        const nextDate = new Date(date + 'T12:00:00');
+        if (recurrenceInterval === 'year') {
+          nextDate.setFullYear(nextDate.getFullYear() + 1);
+        } else {
+          nextDate.setMonth(nextDate.getMonth() + 1);
+        }
+
+        // 3. Create the recurrence rule
+        const ruleResult = await createRecurringExpense({
+          groupId,
+          amount: finalAmount,
+          description,
+          splitPercentage: 100,
+          splitWith: firstSplitWith,
+          createdBy: payerId,
+          intervalUnit: recurrenceInterval,
+          nextOccurrence: nextDate.toISOString(),
+          totalInstallments: totalInst,
+        });
+
+        if (ruleResult.success) {
+          toast({ title: 'Sucesso! 🎉', description: isInstallment ? 'Compra parcelada registrada com sucesso.' : 'Despesa recorrente agendada com sucesso.' });
+          onSuccess();
+          onClose();
+        } else {
+          toast({ title: 'Erro', description: 'Falha ao agendar recorrência.', variant: 'destructive' });
+        }
       } else {
-        toast({ title: 'Erro', description: 'Falha ao adicionar despesa.', variant: 'destructive' });
+        const result = await addExpense({
+          amount: numAmount,
+          description,
+          groupId,
+          splitPercentage: 100, // 100% of expense total is split
+          splitWith: splitWithWithAmounts,
+          createdBy: payerId,
+          createdAt: new Date(date + 'T12:00:00').toISOString(),
+          receiptData: receiptData || undefined,
+          receiptType: receiptType || undefined,
+        });
+
+        if (result.success) {
+          toast({ title: 'Sucesso! 🎉', description: 'Despesa adicionada com sucesso.' });
+          onSuccess();
+          onClose();
+        } else {
+          toast({ title: 'Erro', description: 'Falha ao adicionar despesa.', variant: 'destructive' });
+        }
       }
     }
   };
@@ -617,6 +688,75 @@ export default function AddExpenseDialog({
                   <X size={14} />
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* Recurring / Installments Section */}
+          {!expenseToEdit && (
+            <div className="border border-gray-200 rounded-xl p-3.5 bg-white space-y-3 shadow-sm">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-700 cursor-pointer" htmlFor="recurring-toggle">
+                  Esta despesa se repete? (Recorrente)
+                </label>
+                <input
+                  type="checkbox"
+                  id="recurring-toggle"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                />
+              </div>
+
+              {isRecurring && (
+                <div className="pt-2 border-t space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-gray-600">Frequência:</span>
+                    <select
+                      value={recurrenceInterval}
+                      onChange={(e) => setRecurrenceInterval(e.target.value as 'month' | 'year')}
+                      className="border rounded bg-white py-1 px-2 font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    >
+                      <option value="month">Mensalmente</option>
+                      <option value="year">Anualmente</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-gray-700 cursor-pointer" htmlFor="installment-toggle">
+                      É parcelado em parcelas fixas?
+                    </label>
+                    <input
+                      type="checkbox"
+                      id="installment-toggle"
+                      checked={isInstallment}
+                      onChange={(e) => setIsInstallment(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {isInstallment && (
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <span className="font-bold text-gray-600">Número de parcelas:</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="2"
+                          value={installmentsCount}
+                          onChange={(e) => setInstallmentsCount(e.target.value)}
+                          className="w-16 border rounded bg-white py-1 px-2 text-right font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                        />
+                        <span className="font-semibold text-gray-400">vezes</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {isInstallment && numAmount > 0 && (
+                    <p className="text-[10px] text-gray-400 font-semibold text-right">
+                      Serão geradas {installmentsCount} parcelas de R$ {formatAmount(numAmount / (parseInt(installmentsCount) || 2))} cada.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

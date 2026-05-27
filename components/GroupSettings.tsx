@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +16,25 @@ import {
 } from '@/components/ui/dialog';
 import { useOrganization } from '@clerk/nextjs';
 import { useToast } from '@/hooks/use-toast';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { getRecurringExpenses, toggleRecurringExpenseStatus, deleteRecurringExpense } from '@/app/actions';
+
+interface RecurringExpense {
+  id: string;
+  group_id: string;
+  amount: number;
+  description: string;
+  split_percentage: number;
+  split_with: { id: string; name: string; splitAmount?: number }[];
+  created_by: string;
+  interval_unit: 'month' | 'year';
+  next_occurrence: string;
+  total_installments: number | null;
+  current_installment: number;
+  active: boolean;
+  created_at: string;
+}
 
 export default function GroupSettings() {
   const { organization } = useOrganization();
@@ -28,12 +45,21 @@ export default function GroupSettings() {
   const [saving, setSaving] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+
+  const fetchRecurring = useCallback(async () => {
+    if (organization?.id) {
+      const result = await getRecurringExpenses(organization.id);
+      setRecurringExpenses(result);
+    }
+  }, [organization?.id]);
 
   useEffect(() => {
     if (organization) {
       setGroupName(organization.name);
+      fetchRecurring();
     }
-  }, [organization]);
+  }, [organization, fetchRecurring]);
 
   const handleSaveName = async () => {
     if (!organization || !groupName.trim() || groupName === organization.name) return;
@@ -94,6 +120,71 @@ export default function GroupSettings() {
               {saving ? 'Saving...' : 'Save'}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Recurring Expenses Card */}
+      <Card>
+        <CardContent className="p-6">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">Despesas Recorrentes e Parceladas</h3>
+          {recurringExpenses.length > 0 ? (
+            <div className="divide-y divide-gray-100">
+              {recurringExpenses.map((re) => {
+                return (
+                  <div key={re.id} className="py-3.5 flex items-center justify-between gap-4">
+                    <div className="min-w-0 flex-grow">
+                      <h4 className="font-semibold text-sm text-gray-900 truncate">
+                        {re.description}
+                      </h4>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        R$ {re.amount.toFixed(2)} / {re.interval_unit === 'year' ? 'ano' : 'mês'} 
+                        {re.total_installments ? ` (Parcela ${re.current_installment - 1} de ${re.total_installments})` : ' (Recorrência contínua)'}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 font-semibold">
+                        Próxima cobrança: {new Date(re.next_occurrence).toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={async () => {
+                          const res = await toggleRecurringExpenseStatus(re.id, !re.active);
+                          if (res.success) {
+                            fetchRecurring();
+                            toast({ title: re.active ? 'Pausado' : 'Ativado', description: 'Status da recorrência atualizado.' });
+                          }
+                        }}
+                        className="transition-all"
+                      >
+                        {re.active ? (
+                          <span className="text-[10px] text-green-700 font-bold bg-green-50 px-2 py-1 rounded border border-green-200 hover:bg-green-100 transition-colors">Ativa</span>
+                        ) : (
+                          <span className="text-[10px] text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 transition-colors">Pausada</span>
+                        )}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                        onClick={async () => {
+                          if (window.confirm('Tem certeza que deseja excluir esta recorrência? Nenhuma despesa futura será criada.')) {
+                            const res = await deleteRecurringExpense(re.id);
+                            if (res.success) {
+                              fetchRecurring();
+                              toast({ title: 'Excluído', description: 'Recorrência deletada com sucesso.' });
+                            }
+                          }
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 py-2 font-medium">Nenhuma recorrência ou parcelamento ativo no grupo.</p>
+          )}
         </CardContent>
       </Card>
 
