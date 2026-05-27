@@ -10,6 +10,11 @@ interface SplitMember {
   name: string;
 }
 
+interface NicknameRow {
+  user_id: string;
+  nickname: string;
+}
+
 interface ExpenseData {
   amount: number;
   description: string;
@@ -102,9 +107,9 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
     const balanceMap = new Map<string, { amount: number; name: string }>();
 
     // Fetch all nicknames
-    const nicknamesResult = await sql`SELECT user_id, nickname FROM nicknames`;
+    const nicknamesResult = (await sql`SELECT user_id, nickname FROM nicknames`) as NicknameRow[];
     const nicknameMap = new Map<string, string>();
-    nicknamesResult.forEach((n: any) => {
+    nicknamesResult.forEach((n) => {
       nicknameMap.set(n.user_id, n.nickname);
     });
 
@@ -335,9 +340,9 @@ export async function saveNickname(userId: string, nickname: string, alternative
 
 export async function getNicknames() {
   try {
-    const result = await sql`SELECT user_id, nickname FROM nicknames`;
+    const result = (await sql`SELECT user_id, nickname FROM nicknames`) as NicknameRow[];
     const map: { [key: string]: string } = {};
-    result.forEach((row: any) => {
+    result.forEach((row) => {
       map[row.user_id] = row.nickname;
     });
     return map;
