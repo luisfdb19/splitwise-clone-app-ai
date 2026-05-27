@@ -94,6 +94,9 @@ export async function addExpense(expenseData: ExpenseData) {
 
 export async function getGroupData(groupId: string, currentUserId: string, currentUserName: string) {
   try {
+    // Process any recurring/installment expenses that are due
+    await processRecurringExpenses(groupId);
+
     const expenses = (await sql`
       SELECT id, amount, description, created_by, split_with, created_at, split_percentage, receipt_data, receipt_type
       FROM expenses
@@ -397,5 +400,164 @@ export async function getNicknames() {
   } catch (error) {
     console.error('Error fetching nicknames:', error);
     return {};
+  }
+}
+
+export async function createRecurringExpense(data: {
+  groupId: string;
+  amount: number;
+  description: string;
+  splitPercentage: number;
+  splitWith: SplitMember[];
+  createdBy: string;
+  intervalUnit: 'month' | 'year';
+  nextOccurrence: string;
+  totalInstallments: number | null;
+}) {
+  try {
+    const { groupId, amount, description, splitPercentage, splitWith, createdBy, intervalUnit, nextOccurrence, totalInstallments } = data;
+    
+    await sql`
+      INSERT INTO recurring_expenses (
+        group_id, amount, description, split_percentage, split_with, created_by, interval_unit, next_occurrence, total_installments, current_installment
+      )
+      VALUES (
+        ${groupId}, ${amount}, ${description}, ${splitPercentage}, ${JSON.stringify(splitWith)}::jsonb, ${createdBy}, ${intervalUnit}, ${new Date(nextOccurrence)}, ${totalInstallments}, 2
+      )
+    `;
+    return { success: true };
+  } catch (error) {
+    console.error('Error creating recurring expense:', error);
+    return { success: false };
+  }
+}
+
+export async function getRecurringExpenses(groupId: string) {
+  try {
+    const result = await sql`
+      SELECT id, group_id, amount, description, split_percentage, split_with, created_by, interval_unit, next_occurrence, total_installments, current_installment, active, created_at
+      FROM recurring_expenses
+      WHERE group_id = ${groupId}
+      ORDER BY created_at DESC
+    `;
+    return result as {
+      id: string;
+      group_id: string;
+      amount: number;
+      description: string;
+      split_percentage: number;
+      split_with: SplitMember[];
+      created_by: string;
+      interval_unit: 'month' | 'year';
+      next_occurrence: string;
+      total_installments: number | null;
+      current_installment: number;
+      active: boolean;
+      created_at: string;
+    }[];
+  } catch (error) {
+    console.error('Error fetching recurring expenses:', error);
+    return [];
+  }
+}
+
+export async function toggleRecurringExpenseStatus(id: string, active: boolean) {
+  try {
+    await sql`
+      UPDATE recurring_expenses
+      SET active = ${active}
+      WHERE id = ${id}
+    `;
+    return { success: true };
+  } catch (error) {
+    console.error('Error toggling recurring expense status:', error);
+    return { success: false };
+  }
+}
+
+export async function deleteRecurringExpense(id: string) {
+  try {
+    await sql`
+      DELETE FROM recurring_expenses
+      WHERE id = ${id}
+    `;
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting recurring expense:', error);
+    return { success: false };
+  }
+}
+
+export async function processRecurringExpenses(groupId: string) {
+  try {
+    // Get all active recurring expenses for this group
+    const activeRules = await sql`
+      SELECT id, group_id, amount, description, split_percentage, split_with, created_by, interval_unit, next_occurrence, total_installments, current_installment
+      FROM recurring_expenses
+      WHERE group_id = ${groupId} AND active = true
+    `;
+
+    const now = new Date();
+
+    for (const rule of activeRules) {
+      let nextDate = new Date(rule.next_occurrence);
+      let currentInst = rule.current_installment;
+      const totalInst = rule.total_installments;
+      let ruleActive = true;
+
+      // Keep generating occurrences as long as next_occurrence is in the past or present
+      while (nextDate <= now && ruleActive) {
+        // Build description
+        let generatedDesc = rule.description;
+        if (totalInst !== null) {
+          generatedDesc = `${rule.description} (${currentInst}/${totalInst})`;
+        }
+
+        // Add expense
+        const splitAmount = (rule.amount * (rule.split_percentage / 100)) / rule.split_with.length;
+        const splitWithInfo = rule.split_with.map((member: SplitMember) => ({
+          id: member.id,
+          name: member.name,
+          splitAmount: splitAmount,
+        }));
+
+        await sql`
+          INSERT INTO expenses (
+            amount, description, group_id, split_percentage, created_by, split_with, created_at
+          )
+          VALUES (
+            ${rule.amount}, ${generatedDesc}, ${rule.group_id}, ${rule.split_percentage}, ${rule.created_by}, ${JSON.stringify(splitWithInfo)}::jsonb, ${nextDate}
+          )
+        `;
+
+        // Update installment counter and checks
+        currentInst++;
+        if (totalInst !== null && currentInst > totalInst) {
+          ruleActive = false;
+        }
+
+        // Advance nextDate
+        const newDate = new Date(nextDate);
+        if (rule.interval_unit === 'year') {
+          newDate.setFullYear(newDate.getFullYear() + 1);
+        } else {
+          newDate.setMonth(newDate.getMonth() + 1);
+        }
+        nextDate = newDate;
+      }
+
+      // If we generated any new occurrences, update database rule
+      if (currentInst !== rule.current_installment || ruleActive === false) {
+        await sql`
+          UPDATE recurring_expenses
+          SET next_occurrence = ${nextDate},
+              current_installment = ${currentInst},
+              active = ${ruleActive}
+          WHERE id = ${rule.id}
+        `;
+      }
+    }
+  } catch (error) {
+    console.error('Error processing recurring expenses:', error);
   }
 }

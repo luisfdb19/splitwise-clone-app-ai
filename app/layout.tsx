@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/toaster';
 const montserrat = Montserrat({ subsets: ['latin'] });
 
 export const metadata = {
+  metadataBase: new URL('https://mixiwise.vercel.app'),
   title: 'Mixiwise',
   description: 'Mixiwise - Split your expenses with your friends and family without limits',
   icons: {
@@ -25,7 +26,7 @@ export const metadata = {
     siteName: 'Mixiwise',
     images: [
       {
-        url: 'https://mixiwise.vercel.app/mixi.png',
+        url: '/mixi.png',
         width: 512,
         height: 512,
         alt: 'Mixiwise Logo',
