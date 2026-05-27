@@ -104,13 +104,11 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
     });
 
     expenses.forEach((expense) => {
-      const creatorSplit =
-        expense.amount -
-        expense.split_with.reduce(
-          (sum: number, member: { splitAmount: number }) =>
-            sum + member.splitAmount,
-          0
-        );
+      const creatorSplit = expense.split_with.reduce(
+        (sum: number, member: { splitAmount: number }) =>
+          sum + member.splitAmount,
+        0
+      );
 
       const creatorId = expense.created_by;
       const creatorName = userMap.get(creatorId) || 'Unknown';

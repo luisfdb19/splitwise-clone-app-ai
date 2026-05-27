@@ -1,10 +1,10 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trash2, Pencil } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
-import { getGroupData, deleteExpense, updateExpense } from '@/app/actions';
+import { getGroupData, deleteExpense } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -12,18 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import GroupMembers from '@/components/GroupMembers';
 import GroupSettings from '@/components/GroupSettings';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import SettleUpDialog from '@/components/SettleUpDialog';
 
-// Define interfaces for Balance and Expense
 interface Balance {
   debtor: string;
   creditor: string;
@@ -41,16 +31,14 @@ interface Expense {
     splitAmount: number;
   }[];
   created_at?: string;
-  split_percentage?: number;
 }
 
-// Add this utility function at the top of the file, outside the component
 const formatAmount = (amount: number | string) => {
   const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
   return numAmount.toFixed(2);
 };
 
-function GroupPage() {
+export default function GroupPage() {
   const { id } = useParams();
   const { setActive } = useOrganizationList();
   const { organization, membership, isLoaded: orgLoaded } = useOrganization();
@@ -63,46 +51,13 @@ function GroupPage() {
   const [orgReady, setOrgReady] = useState(false);
   const { toast } = useToast();
 
-  // State for editing expense
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [editAmount, setEditAmount] = useState<string>('');
-  const [editDescription, setEditDescription] = useState<string>('');
-  const [editSplitPercentage, setEditSplitPercentage] = useState<string>('');
-  const [editSplitWith, setEditSplitWith] = useState<{ id: string; name: string }[]>([]);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
-  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
-
-  // Fetch organization members to allow selection on editing split
-  useEffect(() => {
-    async function fetchOrgMembers() {
-      if (organization) {
-        try {
-          const memberships = await organization.getMemberships();
-          const membersList = memberships.data.map((m) => ({
-            id: m.publicUserData.userId ?? '',
-            name: `${m.publicUserData.firstName ?? ''} ${
-              m.publicUserData.lastName ?? ''
-            }`.trim(),
-          }));
-          setMembers(membersList);
-        } catch (err) {
-          console.error('Error fetching memberships:', err);
-        }
-      }
-    }
-    if (orgLoaded && organization) {
-      fetchOrgMembers();
-    }
-  }, [organization, orgLoaded]);
-
-  // Set the active organization based on the URL id
   useEffect(() => {
     if (setActive && id) {
       setActive({ organization: id as string }).then(() => {
         setOrgReady(true);
       }).catch((err) => {
         console.error('Error setting active organization:', err);
-        setOrgReady(true); // still mark ready so we can show error
+        setOrgReady(true);
       });
     }
   }, [setActive, id]);
@@ -137,13 +92,10 @@ function GroupPage() {
     return <div>Organization not found</div>;
   }
 
-  // Check admin role from the active membership
   const isAdmin = membership?.role === 'org:admin';
 
-  const groupDescription =
-    "View and manage the details of your group. You can see the group's name, balances, and expenses. As an admin, you can also manage members and settings.";
-
   const getInitials = (name: string): string => {
+    if (!name) return '??';
     return name
       .split(' ')
       .map((word) => word[0])
@@ -152,134 +104,69 @@ function GroupPage() {
       .slice(0, 2);
   };
 
-  const getRandomColor = (): string => {
-    const colors = [
-      'bg-blue-500',
-      'bg-green-500',
-      'bg-yellow-500',
-      'bg-red-500',
-      'bg-purple-500',
-    ];
-    return colors[Math.floor(Math.random() * colors.length)];
-  };
-
-  const getGroupedExpenses = (expensesList: Expense[]) => {
-    const groupsMap = new Map<string, Expense[]>();
-    expensesList.forEach((expense) => {
-      const date = expense.created_at
-        ? new Date(expense.created_at).toLocaleDateString('pt-BR', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })
-        : 'Sem data';
-      if (!groupsMap.has(date)) {
-        groupsMap.set(date, []);
-      }
-      groupsMap.get(date)!.push(expense);
-    });
-
-    const grouped: { date: string; items: Expense[] }[] = [];
-    groupsMap.forEach((items, date) => {
-      grouped.push({ date, items });
-    });
-    return grouped;
+  const getRandomColor = (idStr: string): string => {
+    const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500', 'bg-teal-500', 'bg-indigo-500'];
+    let hash = 0;
+    for (let i = 0; i < idStr.length; i++) hash += idStr.charCodeAt(i);
+    return colors[hash % colors.length];
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
     if (!isAdmin) {
-      toast({
-        title: 'Error 🚨',
-        description: 'Only admins can delete expenses. 🚫',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Only admins can delete expenses.', variant: 'destructive' });
       return;
     }
-
-    const confirmed = window.confirm(
-      'Are you sure you want to delete this expense?'
-    );
-    if (confirmed) {
+    if (window.confirm('Are you sure you want to delete this?')) {
       const result = await deleteExpense(expenseId);
       if (result.success) {
-        // Refresh the page data
         const { expenses: updatedExpenses, balances: updatedBalances } =
           await getGroupData(id as string, user?.id || '', user?.fullName || 'You');
         setExpenses(updatedExpenses);
         setBalances(updatedBalances);
-        router.refresh(); // Refresh the page to update any server-side rendered content
+        router.refresh();
       } else {
-        toast({ title: 'Failed to delete expense. Please try again.' });
+        toast({ title: 'Error', description: 'Failed to delete.' });
       }
     }
   };
 
-  const handleSaveEditExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingExpense) return;
+  const isMe = (nameOrId: string) => {
+    if (!user) return false;
+    return nameOrId === user.id || 
+           nameOrId === user.fullName || 
+           (user.firstName && nameOrId.toLowerCase().includes(user.firstName.toLowerCase()));
+  };
 
-    if (!editAmount || !editDescription || !editSplitPercentage || editSplitWith.length === 0) {
-      toast({
-        title: 'Error 🚨',
-        description: 'Please fill in all fields and select at least one member to split with.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const result = await updateExpense(editingExpense.id, {
-      amount: parseFloat(editAmount),
-      description: editDescription,
-      splitPercentage: parseFloat(editSplitPercentage),
-      splitWith: editSplitWith,
-    });
-
-    if (result.success) {
-      toast({
-        title: 'Expense Updated! 🎉',
-        description: 'Your changes have been successfully saved.',
-      });
-      setIsEditDialogOpen(false);
-      setEditingExpense(null);
-      // Refresh data
-      const { expenses: updatedExpenses, balances: updatedBalances } =
-        await getGroupData(id as string, user?.id || '', user?.fullName || 'You');
-      setExpenses(updatedExpenses);
-      setBalances(updatedBalances);
-      router.refresh();
-    } else {
-      toast({
-        title: 'Error 🚨',
-        description: 'Failed to update expense. Please try again.',
-        variant: 'destructive',
-      });
-    }
+  const shortName = (name: string) => {
+    if (isMe(name)) return 'você';
+    const parts = name.split(' ');
+    if (parts.length > 1) return `${parts[0]} ${parts[parts.length-1][0]}.`;
+    return name;
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 max-w-4xl mx-auto bg-gray-50 min-h-screen">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-sm">
+          <div className="w-14 h-14 bg-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-2xl shadow-md">
             {getInitials(organization.name)}
           </div>
           <div>
-            <h1 className="text-3xl font-bold">{organization.name}</h1>
+            <h1 className="text-3xl font-bold text-gray-900">{organization.name}</h1>
             <p className="text-sm text-gray-500">{(organization as unknown as { membersCount: number }).membersCount} members</p>
           </div>
         </div>
 
-        <Link href="/groups">
-          <Button className="bg-purple-600 text-white px-4 py-2 rounded-md">
-            All Groups
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <SettleUpDialog balances={balances} groupId={id as string} />
+          <Link href="/groups">
+            <Button variant="outline" className="bg-white">All Groups</Button>
+          </Link>
+        </div>
       </div>
 
-      <p className="text-gray-600 mb-8">{groupDescription}</p>
-
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="mb-6">
+        <TabsList className="mb-6 bg-white border shadow-sm">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           {isAdmin && <TabsTrigger value="settings">Settings</TabsTrigger>}
@@ -287,101 +174,134 @@ function GroupPage() {
 
         <TabsContent value="overview" className="space-y-8">
           <div>
-            <h2 className="text-2xl font-semibold mb-4">Balances</h2>
+            <h2 className="text-xl font-bold mb-4 text-gray-800">Balances</h2>
             {balances.length > 0 ? (
-              balances.map((balance, index) => (
-                <Card key={index} className="mb-4">
-                  <CardContent className="flex items-center p-6">
-                    <div
-                      className={`h-10 w-10 ${getRandomColor()} rounded-full mr-4 flex items-center justify-center text-white font-semibold flex-shrink-0`}
-                    >
-                      {getInitials(balance.debtor)}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">
-                        {balance.debtor} owes {balance.creditor}
-                      </h3>
-                      <p className="text-sm text-gray-600 font-medium">
-                        ${formatAmount(balance.amount)}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {balances.map((balance, index) => {
+                  const amIDebtor = isMe(balance.debtor);
+                  const amICreditor = isMe(balance.creditor);
+                  
+                  let text = '';
+                  let amountClass = 'text-gray-900';
+                  
+                  if (amIDebtor) {
+                    text = `você deve a ${shortName(balance.creditor)}`;
+                    amountClass = 'text-red-500';
+                  } else if (amICreditor) {
+                    text = `${shortName(balance.debtor)} deve a você`;
+                    amountClass = 'text-green-500';
+                  } else {
+                    text = `${shortName(balance.debtor)} deve a ${shortName(balance.creditor)}`;
+                  }
+
+                  return (
+                    <Card key={index} className="shadow-sm border-0 ring-1 ring-gray-200">
+                      <CardContent className="flex items-center p-4">
+                        <div className={`h-12 w-12 ${getRandomColor(balance.debtor)} rounded-full mr-4 flex items-center justify-center text-white font-bold text-lg flex-shrink-0`}>
+                          {getInitials(balance.debtor)}
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 font-medium">{text}</p>
+                          <p className={`text-xl font-bold ${amountClass}`}>
+                            R${formatAmount(balance.amount)}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             ) : (
-              <p className="text-gray-600">
-                🌟 No outstanding balances. Everyone&apos;s all squared up! 🎉
-              </p>
+              <p className="text-gray-500 text-sm">🌟 Tudo zerado! Ninguém deve nada. 🎉</p>
             )}
           </div>
 
           <div>
-            <h2 className="text-2xl font-semibold mb-6">Expenses</h2>
+            <h2 className="text-xl font-bold mb-4 text-gray-800">Expenses</h2>
             {expenses.length > 0 ? (
-              getGroupedExpenses(expenses).map((group) => (
-                <div key={group.date} className="mb-8">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-xs font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-100">
-                      {group.date}
-                    </span>
-                    <div className="h-px bg-gray-100 flex-grow" />
-                  </div>
-                  <div className="space-y-4">
-                    {group.items.map((expense) => (
-                      <Card key={expense.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="flex items-center justify-between p-6">
-                          <div className="flex items-center">
-                            <div
-                              className={`h-10 w-10 ${getRandomColor()} rounded-full mr-4 flex items-center justify-center text-white font-semibold`}
-                            >
-                              {getInitials(expense.description)}
-                            </div>
-                            <div>
-                              <h3 className="font-semibold">{expense.description}</h3>
-                              <p className="text-sm text-gray-600">
-                                ${formatAmount(expense.amount)} · {expense.split_with.map((s) => s.name).join(', ')}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Split type: Percentage{' '}
-                                {(
-                                  (expense.split_with[0]?.splitAmount / expense.amount) *
-                                  100
-                                ).toFixed(2)}
-                                %
-                              </p>
+              <div className="space-y-2">
+                {expenses.map((expense) => {
+                  const creatorIsMe = isMe(expense.created_by);
+                  const creatorStr = shortName(expense.created_by);
+                  const isPayment = expense.description.toLowerCase().includes('pagou') || expense.description.toLowerCase().includes('payment') || expense.description.toLowerCase().includes('pagamento');
+                  
+                  // For a payment, the layout is slightly different
+                  let lentText = '';
+                  let lentAmount = '';
+                  let lentClass = 'text-gray-500';
+                  
+                  if (!isPayment && expense.split_with.length > 0) {
+                    const firstSplit = expense.split_with[0];
+                    const splitIsMe = isMe(firstSplit.id) || isMe(firstSplit.name);
+                    
+                    if (creatorIsMe) {
+                      lentText = `você emprestou a ${shortName(firstSplit.name)}`;
+                      lentAmount = `R$${formatAmount(firstSplit.splitAmount)}`;
+                      lentClass = 'text-green-500 font-medium';
+                    } else if (splitIsMe) {
+                      lentText = `${creatorStr} emprestou a você`;
+                      lentAmount = `R$${formatAmount(firstSplit.splitAmount)}`;
+                      lentClass = 'text-red-500 font-medium';
+                    } else {
+                      lentText = `${creatorStr} emprestou a ${shortName(firstSplit.name)}`;
+                      lentAmount = `R$${formatAmount(firstSplit.splitAmount)}`;
+                    }
+                  } else if (isPayment) {
+                    lentText = 'Pagamento';
+                    lentAmount = `R$${formatAmount(expense.amount)}`;
+                    lentClass = 'text-green-500 font-medium';
+                  }
+
+                  return (
+                    <Card key={expense.id} className="shadow-sm hover:bg-gray-50 transition-colors border-0 ring-1 ring-gray-200">
+                      <CardContent className="flex items-center justify-between p-4 py-3">
+                        <div className="flex items-center flex-grow">
+                          <div className="flex flex-col items-center justify-center mr-4 w-12 flex-shrink-0 text-center">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                              {expense.created_at ? new Date(expense.created_at).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') : 'Mês'}
+                            </span>
+                            <span className="text-xl font-bold text-gray-700">
+                              {expense.created_at ? new Date(expense.created_at).getDate() : '--'}
+                            </span>
+                          </div>
+                          
+                          <div className={`h-10 w-10 ${isPayment ? 'bg-teal-500' : getRandomColor(expense.description)} rounded-full mr-4 flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm`}>
+                            {getInitials(expense.description)}
+                          </div>
+                          
+                          <div className="flex-grow min-w-0 pr-4">
+                            <h3 className="font-semibold text-gray-900 truncate">{expense.description}</h3>
+                            <div className="flex flex-col sm:flex-row sm:gap-6 mt-1">
+                              <div className="text-xs">
+                                <span className="text-gray-500">{creatorIsMe ? 'você' : creatorStr} pagou </span>
+                                <span className="font-medium text-gray-900">R${formatAmount(expense.amount)}</span>
+                              </div>
+                              {lentText && (
+                                <div className="text-xs">
+                                  <span className="text-gray-500">{lentText} </span>
+                                  <span className={lentClass}>{lentAmount}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
-                          {isAdmin && (
-                            <div className="flex items-center gap-3">
-                              <Pencil
-                                className="text-blue-500 cursor-pointer hover:text-blue-700 transition-colors"
-                                size={20}
-                                onClick={() => {
-                                  setEditingExpense(expense);
-                                  setEditAmount(expense.amount.toString());
-                                  setEditDescription(expense.description);
-                                  setEditSplitPercentage(expense.split_percentage ? expense.split_percentage.toString() : '50');
-                                  setEditSplitWith(expense.split_with.map((m) => ({ id: m.id, name: m.name })));
-                                  setIsEditDialogOpen(true);
-                                }}
-                              />
-                              <Trash2
-                                className="text-red-500 cursor-pointer hover:text-red-700 transition-colors"
-                                size={20}
-                                onClick={() => handleDeleteExpense(expense.id)}
-                              />
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ))
+                        </div>
+                        {isAdmin && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-gray-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                            onClick={() => handleDeleteExpense(expense.id)}
+                          >
+                            <Trash2 size={18} />
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             ) : (
-              <p className="text-gray-600">
-                💸 No expenses yet. Time to split some bills! 🧾
-              </p>
+              <p className="text-gray-500 text-sm">💸 Nenhuma despesa ainda. Hora de rachar a conta! 🧾</p>
             )}
           </div>
         </TabsContent>
@@ -396,99 +316,6 @@ function GroupPage() {
           </TabsContent>
         )}
       </Tabs>
-
-      {/* Edit Expense Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Expense</DialogTitle>
-            <DialogDescription>
-              Update details for this expense and adjust the split.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSaveEditExpense} className="space-y-4">
-            <div>
-              <Label htmlFor="edit-amount">Amount</Label>
-              <Input
-                id="edit-amount"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="edit-description">Description</Label>
-              <Input
-                id="edit-description"
-                placeholder="What did you pay for?"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="edit-splitPercentage">Split Percentage</Label>
-              <Input
-                id="edit-splitPercentage"
-                type="number"
-                placeholder="Enter percentage to split"
-                value={editSplitPercentage}
-                onChange={(e) => setEditSplitPercentage(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Split with</Label>
-              <div className="max-h-40 overflow-y-auto border rounded-md p-3 space-y-2">
-                {members.map((member) => {
-                  const isChecked = editSplitWith.some((m) => m.id === member.id);
-                  return (
-                    <div key={member.id} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id={`edit-member-${member.id}`}
-                        checked={isChecked}
-                        onChange={() => {
-                          if (isChecked) {
-                            setEditSplitWith(editSplitWith.filter((m) => m.id !== member.id));
-                          } else {
-                            setEditSplitWith([...editSplitWith, member]);
-                          }
-                        }}
-                        className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                      />
-                      <label
-                        htmlFor={`edit-member-${member.id}`}
-                        className="text-sm font-medium leading-none cursor-pointer"
-                      >
-                        {member.name}
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit">
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
-
-export default GroupPage;

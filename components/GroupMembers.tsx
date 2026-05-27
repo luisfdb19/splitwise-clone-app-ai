@@ -76,7 +76,14 @@ export default function GroupMembers({ isAdmin }: GroupMembersProps) {
     if (!organization || !isAdmin) return;
     try {
       const pendingInvites = await organization.getInvitations();
-      setInvitations(pendingInvites.data);
+      const memberships = await organization.getMemberships();
+      const memberEmails = new Set(
+        memberships.data.map((m) => m.publicUserData.identifier?.toLowerCase())
+      );
+      const filteredInvites = pendingInvites.data.filter(
+        (invite) => invite.emailAddress && !memberEmails.has(invite.emailAddress.toLowerCase())
+      );
+      setInvitations(filteredInvites);
     } catch (error) {
       console.error('Error fetching invitations:', error);
     }
