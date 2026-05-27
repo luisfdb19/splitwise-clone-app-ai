@@ -1,7 +1,8 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Paperclip, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { useParams } from 'next/navigation';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 import { getGroupData, deleteExpense } from '@/app/actions';
@@ -13,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import GroupMembers from '@/components/GroupMembers';
 import GroupSettings from '@/components/GroupSettings';
 import SettleUpDialog from '@/components/SettleUpDialog';
+import AddExpenseDialog from '@/components/AddExpenseDialog';
 
 interface Balance {
   debtor: string;
@@ -25,12 +27,15 @@ interface Expense {
   amount: number;
   description: string;
   created_by: string;
+  created_by_name?: string;
   split_with: {
     id: string;
     name: string;
     splitAmount: number;
   }[];
   created_at?: string;
+  receipt_data?: string;
+  receipt_type?: string;
 }
 
 const formatAmount = (amount: number | string) => {
@@ -49,7 +54,34 @@ export default function GroupPage() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
   const [orgReady, setOrgReady] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<{data: string, type: string} | null>(null);
   const { toast } = useToast();
+
+  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch organization members to pass to AddExpenseDialog
+  useEffect(() => {
+    async function fetchOrgMembers() {
+      if (organization) {
+        try {
+          const memberships = await organization.getMemberships();
+          const membersList = memberships.data.map((m) => ({
+            id: m.publicUserData.userId ?? '',
+            name: `${m.publicUserData.firstName ?? ''} ${
+              m.publicUserData.lastName ?? ''
+            }`.trim(),
+          }));
+          setMembers(membersList);
+        } catch (err) {
+          console.error('Error fetching memberships:', err);
+        }
+      }
+    }
+    if (orgLoaded && organization) {
+      fetchOrgMembers();
+    }
+  }, [organization, orgLoaded]);
 
   useEffect(() => {
     if (setActive && id) {
@@ -158,6 +190,12 @@ export default function GroupPage() {
         </div>
 
         <div className="flex gap-2">
+          <Button 
+            className="bg-teal-500 hover:bg-teal-600 text-white shadow-sm font-semibold gap-1.5"
+            onClick={() => setIsAddExpenseOpen(true)}
+          >
+            Adicionar despesa
+          </Button>
           <SettleUpDialog balances={balances} groupId={id as string} />
           <Link href="/groups">
             <Button variant="outline" className="bg-white">All Groups</Button>
@@ -222,7 +260,7 @@ export default function GroupPage() {
               <div className="space-y-2">
                 {expenses.map((expense) => {
                   const creatorIsMe = isMe(expense.created_by);
-                  const creatorStr = shortName(expense.created_by);
+                  const creatorStr = shortName(expense.created_by_name || expense.created_by);
                   const isPayment = expense.description.toLowerCase().includes('pagou') || expense.description.toLowerCase().includes('payment') || expense.description.toLowerCase().includes('pagamento');
                   
                   // For a payment, the layout is slightly different
@@ -285,16 +323,28 @@ export default function GroupPage() {
                             </div>
                           </div>
                         </div>
-                        {isAdmin && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="text-gray-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
-                            onClick={() => handleDeleteExpense(expense.id)}
-                          >
-                            <Trash2 size={18} />
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {expense.receipt_data && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-gray-400 hover:text-teal-600 hover:bg-teal-50 flex-shrink-0"
+                              onClick={() => setSelectedReceipt({ data: expense.receipt_data!, type: expense.receipt_type || 'image/jpeg' })}
+                            >
+                              <Paperclip size={18} />
+                            </Button>
+                          )}
+                          {isAdmin && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-gray-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                              onClick={() => handleDeleteExpense(expense.id)}
+                            >
+                              <Trash2 size={18} />
+                            </Button>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   );
@@ -316,6 +366,55 @@ export default function GroupPage() {
           </TabsContent>
         )}
       </Tabs>
+
+      <AddExpenseDialog
+        isOpen={isAddExpenseOpen}
+        onClose={() => setIsAddExpenseOpen(false)}
+        groupId={id as string}
+        members={members}
+        currentUser={user ? { id: user.id, fullName: user.fullName, firstName: user.firstName } : null}
+        onSuccess={async () => {
+          if (id && user) {
+            const { expenses: updatedExpenses, balances: updatedBalances } = await getGroupData(
+              id as string,
+              user.id,
+              user.fullName || 'You'
+            );
+            setExpenses(updatedExpenses);
+            setBalances(updatedBalances);
+            router.refresh();
+          }
+        }}
+      />
+
+      {/* Receipt Viewer Dialog */}
+      <Dialog open={!!selectedReceipt} onOpenChange={(open) => !open && setSelectedReceipt(null)}>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden border-0 rounded-xl shadow-2xl bg-white">
+          <DialogHeader className="bg-gray-100 p-4 flex flex-row items-center justify-between space-y-0 border-b">
+            <DialogTitle className="text-xl font-bold text-gray-800">Recibo</DialogTitle>
+            <DialogClose asChild>
+              <button className="text-gray-500 hover:text-gray-700 transition-colors">
+                <X size={20} />
+              </button>
+            </DialogClose>
+          </DialogHeader>
+          <div className="p-4 flex items-center justify-center max-h-[80vh] overflow-y-auto bg-gray-50">
+            {selectedReceipt?.type.includes('pdf') ? (
+              <iframe
+                src={selectedReceipt.data}
+                className="w-full h-[70vh] border-0"
+                title="Recibo PDF"
+              />
+            ) : (
+              <img
+                src={selectedReceipt?.data}
+                alt="Recibo"
+                className="max-w-full h-auto object-contain rounded-md"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

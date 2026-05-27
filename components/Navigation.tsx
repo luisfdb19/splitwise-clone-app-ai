@@ -4,7 +4,7 @@ import Link from 'next/link';
 
 export default function Navigation() {
   return (
-    <nav className="flex justify-between items-center p-4 bg-gray-100">
+    <nav className="flex flex-col sm:flex-row justify-between items-center p-4 bg-gray-100 gap-4 sm:gap-0">
       <Link href="/" className="flex items-center space-x-2">
         <img
           src="/mixi.png"
@@ -16,29 +16,29 @@ export default function Navigation() {
         </span>
       </Link>
 
-      <div className="flex items-center space-x-12">
+      <div className="flex items-center flex-wrap justify-center gap-3 sm:gap-6">
         {/* Added new link for 'Your Groups' */}
         <Link
           href="/groups"
-          className="text-gray-700 hover:text-gray-900 hover:underline"
+          className="text-sm sm:text-base text-gray-700 hover:text-gray-900 hover:underline"
         >
           Your Groups
         </Link>
         <Link
           href="/group"
-          className="text-gray-700 hover:text-gray-900 hover:underline"
+          className="text-sm sm:text-base text-gray-700 hover:text-gray-900 hover:underline"
         >
           Create Group
         </Link>
         <Link
           href="/expense"
-          className="text-gray-700 hover:text-gray-900 hover:underline"
+          className="text-sm sm:text-base text-gray-700 hover:text-gray-900 hover:underline"
         >
           Add Expense
         </Link>
         <Link
           href="/import"
-          className="text-gray-700 hover:text-gray-900 hover:underline"
+          className="text-sm sm:text-base text-gray-700 hover:text-gray-900 hover:underline"
         >
           Importar
         </Link>

@@ -40,6 +40,54 @@ export default function AddExpense() {
   const [splitWith, setSplitWith] = useState<SplitMember[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [receiptData, setReceiptData] = useState<string | null>(null);
+  const [receiptType, setReceiptType] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      
+      if (file.type.startsWith('image/')) {
+        const img = new Image();
+        img.src = result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800;
+          const MAX_HEIGHT = 800;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.6);
+          setReceiptData(compressed);
+          setReceiptType('image/jpeg');
+        };
+      } else {
+        setReceiptData(result);
+        setReceiptType(file.type);
+      }
+    };
+  };
 
   const { user, isLoaded: isUserLoaded } = useUser();
   const { userMemberships, isLoaded: isOrgListLoaded } = useOrganizationList({
@@ -121,6 +169,8 @@ export default function AddExpense() {
         name: member.name,
       })),
       createdBy: user.id,
+      receiptData: receiptData || undefined,
+      receiptType: receiptType || undefined,
     };
 
     try {
@@ -138,6 +188,8 @@ export default function AddExpense() {
         setGroup('');
         setSplitPercentage('');
         setSplitWith([]);
+        setReceiptData(null);
+        setReceiptType(null);
       } else {
         throw new Error('Failed to add expense');
       }
@@ -286,7 +338,29 @@ export default function AddExpense() {
           </Select>
         </div>
 
-        <Button type="submit" className="w-full">
+        <div>
+          <Label
+            htmlFor="receipt"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Anexar Recibo (Opcional)
+          </Label>
+          <Input
+            id="receipt"
+            type="file"
+            accept=".png,.jpg,.jpeg,.pdf"
+            onChange={handleFileChange}
+            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+          />
+          {receiptData && (
+            <p className="text-xs text-green-600 mt-1">Recibo anexado com sucesso!</p>
+          )}
+        </div>
+
+        <Button
+          type="submit"
+          className="w-full bg-purple-600 text-white hover:bg-purple-700"
+        >
           Save Expense
         </Button>
       </form>

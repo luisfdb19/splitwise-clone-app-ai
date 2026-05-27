@@ -19,6 +19,7 @@ import { useOrganization, useUser } from '@clerk/nextjs';
 import { useToast } from '@/hooks/use-toast';
 import { Shield, ShieldAlert, X, Mail } from 'lucide-react';
 import { OrganizationMembershipResource, OrganizationInvitationResource } from '@clerk/types';
+import { getNicknames, saveNickname } from '@/app/actions';
 
 interface GroupMembersProps {
   isAdmin: boolean;
@@ -62,6 +63,43 @@ export default function GroupMembers({ isAdmin }: GroupMembersProps) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  const [nicknames, setNicknames] = useState<{ [userId: string]: string }>({});
+  const [editingNicknames, setEditingNicknames] = useState<{ [memberId: string]: string }>({});
+
+  const fetchNicknames = async () => {
+    try {
+      const data = await getNicknames();
+      setNicknames(data);
+    } catch (error) {
+      console.error('Error fetching nicknames:', error);
+    }
+  };
+
+  const handleUpdateNickname = async (userId: string, memberId: string, email: string, name: string) => {
+    const nickname = editingNicknames[memberId];
+    if (!userId) return;
+    
+    // Generate alternative keys to match slugified/imported records
+    const emailPrefix = email ? email.split('@')[0] : '';
+    const slug = name.toLowerCase().replace(/\s+/g, '-');
+    const alternativeKeys = [email, emailPrefix, name, slug, name.toLowerCase()].filter(Boolean);
+
+    try {
+      const res = await saveNickname(userId, nickname, alternativeKeys);
+      if (res.success) {
+        toast({ title: 'Sucesso', description: 'Apelido atualizado com sucesso!' });
+        await fetchNicknames();
+        const updatedEditing = { ...editingNicknames };
+        delete updatedEditing[memberId];
+        setEditingNicknames(updatedEditing);
+      } else {
+        throw new Error();
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Não foi possível salvar o apelido.', variant: 'destructive' });
+    }
+  };
+
   const fetchMembers = async () => {
     if (!organization) return;
     try {
@@ -92,7 +130,7 @@ export default function GroupMembers({ isAdmin }: GroupMembersProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (organization) {
-      Promise.all([fetchMembers(), fetchInvitations()]).finally(() =>
+      Promise.all([fetchMembers(), fetchInvitations(), fetchNicknames()]).finally(() =>
         setLoading(false)
       );
     }
@@ -230,13 +268,44 @@ export default function GroupMembers({ isAdmin }: GroupMembersProps) {
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold">
-                          {name} {isMe && '(You)'}
+                          {nicknames[member.publicUserData.userId ?? ''] || name} {isMe && '(Você)'}
                         </h4>
+                        {nicknames[member.publicUserData.userId ?? ''] && (
+                          <span className="text-xs text-gray-400 font-normal">
+                            ({name})
+                          </span>
+                        )}
                         <Badge variant={isAdminRole ? 'default' : 'secondary'}>
-                          {isAdminRole ? 'Admin' : 'Member'}
+                          {isAdminRole ? 'Admin' : 'Membro'}
                         </Badge>
                       </div>
                       <p className="text-sm text-gray-500">{email}</p>
+                      
+                      {/* Nickname setting field */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Definir apelido..."
+                          value={editingNicknames[member.id] !== undefined ? editingNicknames[member.id] : (nicknames[member.publicUserData.userId ?? ''] || '')}
+                          onChange={(e) => {
+                            setEditingNicknames({
+                              ...editingNicknames,
+                              [member.id]: e.target.value,
+                            });
+                          }}
+                          className="text-xs border-b border-dashed border-gray-300 focus:border-purple-500 bg-transparent py-0.5 px-1 outline-none text-gray-600 focus:ring-0 w-32"
+                        />
+                        {editingNicknames[member.id] !== undefined && editingNicknames[member.id] !== (nicknames[member.publicUserData.userId ?? ''] || '') && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-1.5 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => handleUpdateNickname(member.publicUserData.userId ?? '', member.id, email ?? '', name)}
+                          >
+                            Salvar
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
 

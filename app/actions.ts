@@ -1,6 +1,7 @@
 'use server';
 
 import { neon } from '@neondatabase/serverless';
+import { clerkClient } from '@clerk/nextjs/server';
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -16,6 +17,9 @@ interface ExpenseData {
   splitPercentage: number;
   splitWith: SplitMember[];
   createdBy: string;
+  createdAt?: string;
+  receiptData?: string;
+  receiptType?: string;
 }
 
 interface Balance {
@@ -29,6 +33,7 @@ interface Expense {
   amount: number;
   description: string;
   created_by: string;
+  created_by_name?: string;
   split_with: {
     id: string;
     name: string;
@@ -36,6 +41,8 @@ interface Expense {
   }[];
   created_at?: string;
   split_percentage?: number;
+  receipt_data?: string;
+  receipt_type?: string;
 }
 
 export async function addExpense(expenseData: ExpenseData) {
@@ -46,6 +53,9 @@ export async function addExpense(expenseData: ExpenseData) {
     splitPercentage,
     splitWith,
     createdBy,
+    createdAt,
+    receiptData,
+    receiptType,
   } = expenseData;
 
   try {
@@ -59,15 +69,16 @@ export async function addExpense(expenseData: ExpenseData) {
       splitAmount: splitAmount,
     }));
 
-    // Insert the expense
+    // Insert the expense with optional date and receipts
+    const dateValue = createdAt ? new Date(createdAt) : new Date();
     await sql`
       INSERT INTO expenses (
-        amount, description, group_id, split_percentage, created_by, split_with
+        amount, description, group_id, split_percentage, created_by, split_with, created_at, receipt_data, receipt_type
       )
       VALUES (
         ${amount}, ${description}, ${groupId}, ${splitPercentage}, ${createdBy}, ${JSON.stringify(
       splitWithInfo
-    )}
+    )}, ${dateValue}, ${receiptData || null}, ${receiptType || null}
       )
     `;
 
@@ -81,7 +92,7 @@ export async function addExpense(expenseData: ExpenseData) {
 export async function getGroupData(groupId: string, currentUserId: string, currentUserName: string) {
   try {
     const expenses = (await sql`
-      SELECT id, amount, description, created_by, split_with, created_at, split_percentage
+      SELECT id, amount, description, created_by, split_with, created_at, split_percentage, receipt_data, receipt_type
       FROM expenses
       WHERE group_id = ${groupId}
       ORDER BY created_at DESC
@@ -90,20 +101,64 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
     const balances: Balance[] = [];
     const balanceMap = new Map<string, { amount: number; name: string }>();
 
+    // Fetch all nicknames
+    const nicknamesResult = await sql`SELECT user_id, nickname FROM nicknames`;
+    const nicknameMap = new Map<string, string>();
+    nicknamesResult.forEach((n: any) => {
+      nicknameMap.set(n.user_id, n.nickname);
+    });
+
     // Build user mapping from all split members to map user IDs to names
     const userMap = new Map<string, string>();
     if (currentUserId && currentUserName) {
-      userMap.set(currentUserId, currentUserName);
+      userMap.set(currentUserId, nicknameMap.get(currentUserId) || currentUserName);
     }
+
+    // Fetch actual organization members from Clerk to map names, emails, and slugs to nicknames
+    try {
+      const client = await clerkClient();
+      const memberships = await client.organizations.getOrganizationMembershipList({
+        organizationId: groupId,
+      });
+      memberships.data.forEach((m) => {
+        const name = `${m.publicUserData?.firstName || ''} ${m.publicUserData?.lastName || ''}`.trim();
+        const userId = m.publicUserData?.userId;
+        const email = m.publicUserData?.identifier;
+        const slug = name.toLowerCase().replace(/\s+/g, '-');
+        const lowerName = name.toLowerCase();
+
+        const resolvedName = nicknameMap.get(userId || '') || nicknameMap.get(email || '') || nicknameMap.get(slug) || name;
+
+        if (userId) userMap.set(userId, resolvedName);
+        if (email) userMap.set(email.toLowerCase(), resolvedName);
+        if (slug) userMap.set(slug, resolvedName);
+        if (lowerName) userMap.set(lowerName, resolvedName);
+      });
+    } catch (err) {
+      console.error('Error fetching org members from Clerk:', err);
+    }
+
     expenses.forEach((expense) => {
       expense.split_with.forEach((member) => {
-        if (member.id && member.name) {
-          userMap.set(member.id, member.name);
+        if (member.id) {
+          userMap.set(member.id, nicknameMap.get(member.id) || member.name);
         }
       });
+      // Also map creator
+      if (expense.created_by) {
+        userMap.set(expense.created_by, nicknameMap.get(expense.created_by) || userMap.get(expense.created_by) || 'Unknown');
+      }
     });
 
     expenses.forEach((expense) => {
+      // Map creator name
+      expense.created_by_name = userMap.get(expense.created_by) || expense.created_by;
+      
+      // Update split member names in place
+      expense.split_with.forEach((member) => {
+        member.name = userMap.get(member.id) || userMap.get(member.name) || member.name;
+      });
+
       const creatorSplit = expense.split_with.reduce(
         (sum: number, member: { splitAmount: number }) =>
           sum + member.splitAmount,
@@ -250,5 +305,44 @@ export async function importExpenses(expenses: ImportedExpense[]) {
   } catch (error) {
     console.error('Error importing expenses:', error);
     return { success: false, count: 0 };
+  }
+}
+
+export async function saveNickname(userId: string, nickname: string, alternativeKeys: string[] = []) {
+  try {
+    await sql`
+      INSERT INTO nicknames (user_id, nickname)
+      VALUES (${userId}, ${nickname})
+      ON CONFLICT (user_id)
+      DO UPDATE SET nickname = ${nickname}
+    `;
+    for (const key of alternativeKeys) {
+      if (key) {
+        await sql`
+          INSERT INTO nicknames (user_id, nickname)
+          VALUES (${key}, ${nickname})
+          ON CONFLICT (user_id)
+          DO UPDATE SET nickname = ${nickname}
+        `;
+      }
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving nickname:', error);
+    return { success: false };
+  }
+}
+
+export async function getNicknames() {
+  try {
+    const result = await sql`SELECT user_id, nickname FROM nicknames`;
+    const map: { [key: string]: string } = {};
+    result.forEach((row: any) => {
+      map[row.user_id] = row.nickname;
+    });
+    return map;
+  } catch (error) {
+    console.error('Error fetching nicknames:', error);
+    return {};
   }
 }
