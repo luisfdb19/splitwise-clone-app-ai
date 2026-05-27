@@ -307,22 +307,20 @@ export default function GroupPage() {
                             </span>
                           </div>
                           
-                          <div className={`h-10 w-10 ${isPayment ? 'bg-teal-500' : getRandomColor(expense.description)} rounded-full mr-4 flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm`}>
-                            {getInitials(expense.description)}
-                          </div>
-                          
                           <div className="flex-grow min-w-0 pr-4">
-                            <h3 className="font-semibold text-gray-900 truncate">{expense.description}</h3>
-                            <div className="flex flex-col sm:flex-row sm:gap-6 mt-1">
-                              <div className="text-xs">
+                            <h3 className="font-semibold text-gray-900 truncate text-sm sm:text-base">{expense.description}</h3>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[11px] sm:text-xs text-gray-500 min-w-0 overflow-hidden whitespace-nowrap">
+                              <span className="truncate flex-shrink-0">
                                 <span className="text-gray-500">{creatorIsMe ? 'você' : creatorStr} pagou </span>
-                                <span className="font-medium text-gray-900">R${formatAmount(expense.amount)}</span>
-                              </div>
+                                <span className="font-semibold text-gray-800">R${formatAmount(expense.amount)}</span>
+                              </span>
                               {lentText && (
-                                <div className="text-xs">
-                                  <span className="text-gray-500">{lentText} </span>
-                                  <span className={lentClass}>{lentAmount}</span>
-                                </div>
+                                <>
+                                  <span className="text-gray-300 flex-shrink-0">•</span>
+                                  <span className={`truncate ${lentClass}`}>
+                                    {lentText.replace(' emprestou a você', ' te emprestou').replace(' emprestou a ', ' emprestou ')} {lentAmount}
+                                  </span>
+                                </>
                               )}
                             </div>
                           </div>
