@@ -351,7 +351,7 @@ export default function AddExpenseDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden border-0 rounded-xl shadow-2xl">
+      <DialogContent className="max-w-md w-[calc(100vw-16px)] sm:w-full p-0 overflow-hidden border-0 rounded-xl shadow-2xl">
         {/* Header matching Splitwise's teal style */}
         <DialogHeader className="bg-teal-500 text-white p-4 flex flex-row items-center justify-between space-y-0">
           <DialogTitle className="text-xl font-bold text-white">
@@ -362,7 +362,7 @@ export default function AddExpenseDialog({
           </button>
         </DialogHeader>
 
-        <div className="p-6 space-y-5 bg-white max-h-[85vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 bg-white max-h-[80vh] sm:max-h-[85vh] overflow-y-auto">
           {/* Top Options matching Splitwise split modes */}
           <div className="flex flex-col gap-1.5 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
             <button
@@ -470,6 +470,7 @@ export default function AddExpenseDialog({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full border-b border-dashed border-gray-300 py-1 text-base font-semibold text-gray-900 focus:outline-none focus:border-teal-500 bg-transparent placeholder-gray-300"
+                style={{ fontSize: '16px' }}
               />
               <div className="flex items-center gap-1">
                 <span className="text-xl font-bold text-gray-700">R$</span>
@@ -479,7 +480,8 @@ export default function AddExpenseDialog({
                   step="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full text-3xl font-semibold text-gray-900 focus:outline-none bg-transparent placeholder-gray-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-full text-2xl sm:text-3xl font-semibold text-gray-900 focus:outline-none bg-transparent placeholder-gray-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  style={{ fontSize: '24px' }}
                 />
               </div>
             </div>
@@ -761,18 +763,18 @@ export default function AddExpenseDialog({
           )}
 
           {/* Action buttons Cancel / Save */}
-          <div className="flex gap-3 justify-end pt-2">
+          <div className="flex gap-2 sm:gap-3 justify-end pt-2">
             <Button
               type="button"
               variant="outline"
-              className="bg-white px-6 rounded-lg text-gray-600 border border-gray-200 text-xs font-bold"
+              className="bg-white px-4 sm:px-6 rounded-lg text-gray-600 border border-gray-200 text-xs font-bold flex-1 sm:flex-none"
               onClick={onClose}
             >
               Cancelar
             </Button>
             <Button
               type="button"
-              className="bg-teal-500 hover:bg-teal-600 text-white px-6 rounded-lg text-xs font-bold"
+              className="bg-teal-500 hover:bg-teal-600 text-white px-4 sm:px-6 rounded-lg text-xs font-bold flex-1 sm:flex-none"
               onClick={handleSave}
             >
               Salvar

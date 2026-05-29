@@ -1,14 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useOrganizationList, useUser } from '@clerk/nextjs';
 
-// Define the type for group
 type Group = {
-  id: string; // Add id property
+  id: string;
   name: string;
   role: string;
   initials: string;
@@ -26,18 +25,17 @@ const GroupItem = ({
   id: string;
 }) => (
   <Link href={`/group/${id}`}>
-    <div className="flex items-center space-x-4 p-4 bg-white rounded-lg shadow mb-4">
-      {' '}
-      {/* Added margin-bottom for spacing */}
-      <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold">
+    <div className="flex items-center p-3 sm:p-4 bg-white rounded-xl shadow-sm ring-1 ring-gray-200 hover:ring-purple-200 hover:shadow-md transition-all group">
+      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-purple-600 flex items-center justify-center text-white font-bold text-sm sm:text-base flex-shrink-0 shadow-sm">
         {initials}
       </div>
-      <div className="flex-grow">
-        <h3 className="font-semibold">{name}</h3>
-        <p className="text-gray-500 text-sm">
-          {role === 'org:admin' ? 'Admin' : 'Member'}
+      <div className="flex-grow ml-3 sm:ml-4 min-w-0">
+        <h3 className="font-semibold text-sm sm:text-base text-gray-900 truncate">{name}</h3>
+        <p className="text-gray-400 text-xs mt-0.5">
+          {role === 'org:admin' ? 'Administrador' : 'Membro'}
         </p>
       </div>
+      <ChevronRight size={18} className="text-gray-300 group-hover:text-purple-400 transition-colors flex-shrink-0" />
     </div>
   </Link>
 );
@@ -60,7 +58,7 @@ const YourGroups = () => {
           .join('')
           .toUpperCase();
         return {
-          id: membership.organization.id, // Add this line
+          id: membership.organization.id,
           name,
           role,
           initials,
@@ -71,28 +69,32 @@ const YourGroups = () => {
   }, [isLoaded, userMemberships.data]);
 
   if (!isLoaded || !user) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <p className="text-xl text-gray-600">Carregando...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-4">Your Groups</h1>
-      <p className="text-gray-600 mb-6">
-        View and manage all your groups in one place. You can see the groups
-        you&apos;re a part of, your role in each group, and easily access each
-        group&apos;s details.
-      </p>
-      <div className="space-y-8">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
+      <div className="mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Seus Grupos</h1>
+        <p className="text-gray-500 text-sm mt-1">
+          Gerencie seus grupos e veja suas despesas compartilhadas.
+        </p>
+      </div>
+
+      <div className="space-y-2.5">
         {groups.map((group, index) => (
           <GroupItem key={index} {...group} id={group.id} />
         ))}
       </div>
-      <Link href="/group">
-        <Button className="mt-6 bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center p-4 rounded-lg shadow mb-4">
-          {' '}
-          {/* Added margin-bottom for spacing */}
-          <Plus className="w-4 h-4 mr-2" />
-          Create New Group
+
+      <Link href="/group" className="block mt-6">
+        <Button className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center py-3 rounded-xl shadow-sm font-semibold text-sm gap-2">
+          <Plus className="w-4 h-4" />
+          Criar Novo Grupo
         </Button>
       </Link>
     </div>

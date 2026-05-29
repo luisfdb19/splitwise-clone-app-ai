@@ -174,28 +174,28 @@ export default function GroupPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-gray-50 min-h-screen">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-2xl shadow-md">
+    <div className="px-4 sm:px-6 max-w-4xl mx-auto bg-gray-50 min-h-screen pb-20 sm:pb-6 pt-4 sm:pt-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-5 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 sm:w-14 sm:h-14 bg-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-lg sm:text-2xl shadow-md flex-shrink-0">
             {getInitials(organization.name)}
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{organization.name}</h1>
-            <p className="text-sm text-gray-500">{(organization as unknown as { membersCount: number }).membersCount} members</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-900 truncate">{organization.name}</h1>
+            <p className="text-xs sm:text-sm text-gray-500">{(organization as unknown as { membersCount: number }).membersCount} membros</p>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
           <Button 
-            className="bg-teal-500 hover:bg-teal-600 text-white shadow-sm font-semibold gap-1.5"
+            className="bg-teal-500 hover:bg-teal-600 text-white shadow-sm font-semibold gap-1.5 text-xs sm:text-sm col-span-2"
             onClick={() => setIsAddExpenseOpen(true)}
           >
             Adicionar despesa
           </Button>
           <SettleUpDialog balances={balances} groupId={id as string} />
-          <Link href="/groups">
-            <Button variant="outline" className="bg-white">All Groups</Button>
+          <Link href="/groups" className="w-full sm:w-auto">
+            <Button variant="outline" className="bg-white w-full text-xs sm:text-sm">Grupos</Button>
           </Link>
         </div>
       </div>
@@ -230,14 +230,14 @@ export default function GroupPage() {
                   }
 
                   return (
-                    <Card key={index} className="shadow-sm border-0 ring-1 ring-gray-200">
-                      <CardContent className="flex items-center p-4">
-                        <div className={`h-12 w-12 ${getRandomColor(balance.debtor)} rounded-full mr-4 flex items-center justify-center text-white font-bold text-lg flex-shrink-0`}>
+                    <Card key={index} className="shadow-sm border-0 ring-1 ring-gray-200 overflow-hidden">
+                      <CardContent className="flex items-center p-3 sm:p-4">
+                        <div className={`h-9 w-9 sm:h-12 sm:w-12 ${getRandomColor(balance.debtor)} rounded-full mr-3 sm:mr-4 flex items-center justify-center text-white font-bold text-xs sm:text-lg flex-shrink-0`}>
                           {getInitials(balance.debtor)}
                         </div>
-                        <div>
-                          <p className="text-sm text-gray-500 font-medium">{text}</p>
-                          <p className={`text-xl font-bold ${amountClass}`}>
+                        <div className="min-w-0 flex-grow">
+                          <p className="text-xs sm:text-sm text-gray-500 font-medium truncate">{text}</p>
+                          <p className={`text-lg sm:text-xl font-bold ${amountClass}`}>
                             R${formatAmount(balance.amount)}
                           </p>
                         </div>
@@ -290,65 +290,64 @@ export default function GroupPage() {
                   return (
                     <Card 
                       key={expense.id} 
-                      className="shadow-sm hover:bg-gray-100 transition-colors border-0 ring-1 ring-gray-200 cursor-pointer"
+                      className="shadow-sm hover:bg-gray-100 transition-colors border-0 ring-1 ring-gray-200 cursor-pointer overflow-hidden"
                       onClick={() => {
                         setEditingExpense(expense);
                         setIsAddExpenseOpen(true);
                       }}
                     >
-                      <CardContent className="flex items-center justify-between p-4 py-3">
-                        <div className="flex items-center flex-grow">
-                          <div className="flex flex-col items-center justify-center mr-4 w-12 flex-shrink-0 text-center">
-                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      <CardContent className="flex items-center justify-between p-3 sm:p-4 h-[68px]">
+                        <div className="flex items-center flex-grow min-w-0 overflow-hidden">
+                          <div className="flex flex-col items-center justify-center mr-2.5 sm:mr-4 w-9 sm:w-12 flex-shrink-0 text-center">
+                            <span className="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase tracking-wider leading-tight">
                               {expense.created_at ? new Date(expense.created_at).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') : 'Mês'}
                             </span>
-                            <span className="text-xl font-bold text-gray-700">
+                            <span className="text-base sm:text-xl font-bold text-gray-700 leading-tight">
                               {expense.created_at ? new Date(expense.created_at).getDate() : '--'}
                             </span>
                           </div>
                           
-                          <div className="flex-grow min-w-0 pr-4">
-                            <h3 className="font-semibold text-gray-900 truncate text-sm sm:text-base">{expense.description}</h3>
-                            <div className="flex items-center gap-1.5 mt-0.5 text-[11px] sm:text-xs text-gray-500 min-w-0 overflow-hidden whitespace-nowrap">
-                              <span className="truncate flex-shrink-0">
-                                <span className="text-gray-500">{creatorIsMe ? 'você' : creatorStr} pagou </span>
+                          <div className="flex-grow min-w-0 overflow-hidden pr-1 sm:pr-4">
+                            <h3 className="font-semibold text-gray-900 truncate text-xs sm:text-base leading-tight">{expense.description}</h3>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-1.5 mt-0.5 min-w-0 overflow-hidden">
+                              <span className="truncate text-[10px] sm:text-xs text-gray-500 leading-tight block">
+                                <span>{creatorIsMe ? 'você' : creatorStr} pagou </span>
                                 <span className="font-semibold text-gray-800">R${formatAmount(expense.amount)}</span>
                               </span>
                               {lentText && (
-                                <>
-                                  <span className="text-gray-300 flex-shrink-0">•</span>
-                                  <span className={`truncate ${lentClass}`}>
-                                    {lentText.replace(' emprestou a você', ' te emprestou').replace(' emprestou a ', ' emprestou ')} {lentAmount}
-                                  </span>
-                                </>
+                                <span className={`truncate text-[10px] sm:text-xs leading-tight block ${lentClass}`}>
+                                  {lentText.replace(' emprestou a você', ' te emprestou').replace(' emprestou a ', ' emprestou ')} {lentAmount}
+                                </span>
                               )}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-0 sm:gap-1 flex-shrink-0">
                           {expense.receipt_data && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="text-gray-400 hover:text-teal-600 hover:bg-teal-50 flex-shrink-0"
+                              className="text-gray-400 hover:text-teal-600 hover:bg-teal-50 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedReceipt({ data: expense.receipt_data!, type: expense.receipt_type || 'image/jpeg' });
                               }}
                             >
-                              <Paperclip size={18} />
+                              <Paperclip size={15} className="sm:hidden" />
+                              <Paperclip size={18} className="hidden sm:block" />
                             </Button>
                           )}
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="text-gray-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                            className="text-gray-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteExpense(expense.id);
                             }}
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={15} className="sm:hidden" />
+                            <Trash2 size={18} className="hidden sm:block" />
                           </Button>
                         </div>
                       </CardContent>

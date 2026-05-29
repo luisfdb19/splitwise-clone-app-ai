@@ -4,8 +4,17 @@
 
 body {
   font-family: Arial, Helvetica, sans-serif;
-  @apply bg-background text-gray-900; /* Update text color */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  @apply bg-background text-gray-900;
 }
+
+/* Mobile bottom nav compensation */
+@media (max-width: 639px) {
+  body {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 
 @layer utilities {
   .text-balance {
