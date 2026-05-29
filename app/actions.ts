@@ -30,7 +30,9 @@ interface ExpenseData {
 
 interface Balance {
   debtor: string;
+  debtorId?: string;
   creditor: string;
+  creditorId?: string;
   amount: number;
 }
 
@@ -210,12 +212,12 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
       );
     });
 
-    const debtors: { name: string; amount: number }[] = [];
-    const creditors: { name: string; amount: number }[] = [];
+    const debtors: { id: string; name: string; amount: number }[] = [];
+    const creditors: { id: string; name: string; amount: number }[] = [];
 
-    balanceMap.forEach(({ amount, name }) => {
-      if (amount < -0.01) debtors.push({ name, amount: Math.abs(amount) });
-      if (amount > 0.01) creditors.push({ name, amount });
+    balanceMap.forEach(({ amount, name }, id) => {
+      if (amount < -0.01) debtors.push({ id, name, amount: Math.abs(amount) });
+      if (amount > 0.01) creditors.push({ id, name, amount });
     });
 
     debtors.sort((a, b) => b.amount - a.amount);
@@ -232,7 +234,9 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
       
       balances.push({
         debtor: debtor.name,
+        debtorId: debtor.id,
         creditor: creditor.name,
+        creditorId: creditor.id,
         amount: settledAmount
       });
       

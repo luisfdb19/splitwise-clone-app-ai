@@ -18,7 +18,9 @@ import AddExpenseDialog from '@/components/AddExpenseDialog';
 
 interface Balance {
   debtor: string;
+  debtorId?: string;
   creditor: string;
+  creditorId?: string;
   amount: number;
 }
 
@@ -159,15 +161,24 @@ export default function GroupPage() {
     }
   };
 
-  const isMe = (nameOrId: string) => {
-    if (!user) return false;
-    return nameOrId === user.id || 
-           nameOrId === user.fullName || 
-           (user.firstName && nameOrId.toLowerCase().includes(user.firstName.toLowerCase()));
+  const normalizeStr = (str: string) => {
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   };
 
-  const shortName = (name: string) => {
-    if (isMe(name)) return 'você';
+  const isMe = (nameOrId: string, userId?: string) => {
+    if (!user) return false;
+    if (userId && userId === user.id) return true;
+    if (nameOrId === user.id) return true;
+    
+    const normalizedTarget = normalizeStr(nameOrId);
+    if (user.fullName && normalizedTarget === normalizeStr(user.fullName)) return true;
+    if (user.firstName && normalizedTarget.includes(normalizeStr(user.firstName))) return true;
+    
+    return false;
+  };
+
+  const shortName = (name: string, userId?: string) => {
+    if (isMe(name, userId)) return 'você';
     const parts = name.split(' ');
     if (parts.length > 1) return `${parts[0]} ${parts[parts.length-1][0]}.`;
     return name;
@@ -213,20 +224,20 @@ export default function GroupPage() {
             {balances.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {balances.map((balance, index) => {
-                  const amIDebtor = isMe(balance.debtor);
-                  const amICreditor = isMe(balance.creditor);
+                  const amIDebtor = isMe(balance.debtor, balance.debtorId);
+                  const amICreditor = isMe(balance.creditor, balance.creditorId);
                   
                   let text = '';
                   let amountClass = 'text-gray-900';
                   
                   if (amIDebtor) {
-                    text = `você deve a ${shortName(balance.creditor)}`;
+                    text = `você deve a ${shortName(balance.creditor, balance.creditorId)}`;
                     amountClass = 'text-red-500';
                   } else if (amICreditor) {
-                    text = `${shortName(balance.debtor)} deve a você`;
+                    text = `${shortName(balance.debtor, balance.debtorId)} deve a você`;
                     amountClass = 'text-green-500';
                   } else {
-                    text = `${shortName(balance.debtor)} deve a ${shortName(balance.creditor)}`;
+                    text = `${shortName(balance.debtor, balance.debtorId)} deve a ${shortName(balance.creditor, balance.creditorId)}`;
                   }
 
                   return (
@@ -256,8 +267,8 @@ export default function GroupPage() {
             {expenses.length > 0 ? (
               <div className="space-y-2">
                 {expenses.map((expense) => {
-                  const creatorIsMe = isMe(expense.created_by);
-                  const creatorStr = shortName(expense.created_by_name || expense.created_by);
+                  const creatorIsMe = isMe(expense.created_by_name || expense.created_by, expense.created_by);
+                  const creatorStr = shortName(expense.created_by_name || expense.created_by, expense.created_by);
                   const isPayment = expense.description.toLowerCase().includes('pagou') || expense.description.toLowerCase().includes('payment') || expense.description.toLowerCase().includes('pagamento');
                   
                   // For a payment, the layout is slightly different
@@ -267,10 +278,10 @@ export default function GroupPage() {
                   
                   if (!isPayment && expense.split_with.length > 0) {
                     const firstSplit = expense.split_with[0];
-                    const splitIsMe = isMe(firstSplit.id) || isMe(firstSplit.name);
+                    const splitIsMe = isMe(firstSplit.name, firstSplit.id);
                     
                     if (creatorIsMe) {
-                      lentText = `você emprestou a ${shortName(firstSplit.name)}`;
+                      lentText = `você emprestou a ${shortName(firstSplit.name, firstSplit.id)}`;
                       lentAmount = `R$${formatAmount(firstSplit.splitAmount)}`;
                       lentClass = 'text-green-500 font-medium';
                     } else if (splitIsMe) {
@@ -278,7 +289,7 @@ export default function GroupPage() {
                       lentAmount = `R$${formatAmount(firstSplit.splitAmount)}`;
                       lentClass = 'text-red-500 font-medium';
                     } else {
-                      lentText = `${creatorStr} emprestou a ${shortName(firstSplit.name)}`;
+                      lentText = `${creatorStr} emprestou a ${shortName(firstSplit.name, firstSplit.id)}`;
                       lentAmount = `R$${formatAmount(firstSplit.splitAmount)}`;
                     }
                   } else if (isPayment) {
