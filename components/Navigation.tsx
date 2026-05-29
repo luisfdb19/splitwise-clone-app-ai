@@ -4,7 +4,7 @@ import React from 'react';
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, PlusCircle, Upload } from 'lucide-react';
+import { Home, Users } from 'lucide-react';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -12,8 +12,6 @@ export default function Navigation() {
   const navItems = [
     { href: '/', label: 'Início', icon: Home },
     { href: '/groups', label: 'Grupos', icon: Users },
-    { href: '/group', label: 'Criar', icon: PlusCircle },
-    { href: '/import', label: 'Importar', icon: Upload },
   ];
 
   const isActive = (href: string) => {
@@ -48,12 +46,6 @@ export default function Navigation() {
               {item.label}
             </Link>
           ))}
-          <Link
-            href="/expense"
-            className="text-base text-gray-700 hover:text-gray-900 hover:underline"
-          >
-            Add Expense
-          </Link>
           <UserButton />
         </div>
       </nav>
