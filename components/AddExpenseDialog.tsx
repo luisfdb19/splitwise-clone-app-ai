@@ -389,7 +389,9 @@ export default function AddExpenseDialog({
               onClick={() => {
                 setSplitMode('you-owe-all');
                 if (currentUser) {
-                  setPayerId(currentUser.id);
+                  // If YOU owe the full amount, someone ELSE paid
+                  const otherMember = members.find((m) => !isMe(m.id));
+                  setPayerId(otherMember ? otherMember.id : currentUser.id);
                   setSelectedMembers(members.filter((m) => isMe(m.id)));
                 }
               }}
