@@ -1,13 +1,12 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trash2, Paperclip, X, RefreshCw } from 'lucide-react';
+import { Trash2, Paperclip, X, RefreshCw, Users, Settings } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { useParams } from 'next/navigation';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 import { getGroupData, deleteExpense } from '@/app/actions';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -63,6 +62,7 @@ export default function GroupPage() {
   const { toast } = useToast();
 
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
   const [recurringDetailExpense, setRecurringDetailExpense] = useState<Expense | null>(null);
@@ -190,37 +190,54 @@ export default function GroupPage() {
 
   return (
     <div className="px-4 sm:px-6 max-w-4xl mx-auto bg-gray-50 min-h-screen pb-20 sm:pb-6 pt-4 sm:pt-6">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-5 gap-3">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-5 gap-4">
+        <div className="flex items-center gap-3 flex-grow min-w-0">
           <div className="w-11 h-11 sm:w-14 sm:h-14 bg-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-lg sm:text-2xl shadow-md flex-shrink-0">
             {getInitials(organization.name)}
           </div>
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-3xl font-bold text-gray-900 truncate">{organization.name}</h1>
-            <p className="text-xs sm:text-sm text-gray-500">{(organization as unknown as { membersCount: number }).membersCount} membros</p>
+          <div className="min-w-0 flex-grow flex flex-row items-center justify-between">
+            <div className="min-w-0 pr-2">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate leading-tight">{organization.name}</h1>
+              <p className="text-xs text-gray-500 mt-0.5">{(organization as unknown as { membersCount: number }).membersCount} membros</p>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className={`h-9 w-9 rounded-full ${activeTab === 'members' ? 'bg-gray-200 text-purple-600' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`} 
+                onClick={() => setActiveTab('members')}
+              >
+                <Users size={18} />
+              </Button>
+              {isAdmin && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={`h-9 w-9 rounded-full ${activeTab === 'settings' ? 'bg-gray-200 text-purple-600' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`} 
+                  onClick={() => setActiveTab('settings')}
+                >
+                  <Settings size={18} />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
+        <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto flex-shrink-0">
           <Button 
-            className="bg-teal-500 hover:bg-teal-600 text-white shadow-sm font-semibold gap-1.5 text-xs sm:text-sm col-span-2"
+            className="bg-teal-500 hover:bg-teal-600 text-white shadow-sm font-semibold gap-1.5 text-xs sm:text-sm"
             onClick={() => setIsAddExpenseOpen(true)}
           >
             Adicionar despesa
           </Button>
           <SettleUpDialog balances={balances} groupId={id as string} />
-          <Link href="/groups" className="w-full sm:w-auto">
-            <Button variant="outline" className="bg-white w-full text-xs sm:text-sm">Grupos</Button>
-          </Link>
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="mb-6 bg-white border shadow-sm flex flex-wrap h-auto">
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="statement">Extrato</TabsTrigger>
-          <TabsTrigger value="members">Membros</TabsTrigger>
-          {isAdmin && <TabsTrigger value="settings">Configurações</TabsTrigger>}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6 bg-white border shadow-sm flex h-auto p-1">
+          <TabsTrigger value="overview" className="flex-1 text-xs sm:text-sm py-2">Visão Geral</TabsTrigger>
+          <TabsTrigger value="statement" className="flex-1 text-xs sm:text-sm py-2">Extrato</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-8">
