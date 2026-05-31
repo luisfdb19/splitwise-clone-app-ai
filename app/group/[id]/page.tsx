@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trash2, Paperclip, X } from 'lucide-react';
+import { Trash2, Paperclip, X, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { useParams } from 'next/navigation';
 import { useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
@@ -15,6 +15,7 @@ import GroupMembers from '@/components/GroupMembers';
 import GroupSettings from '@/components/GroupSettings';
 import SettleUpDialog from '@/components/SettleUpDialog';
 import AddExpenseDialog from '@/components/AddExpenseDialog';
+import RecurringExpenseDetailDialog from '@/components/RecurringExpenseDetailDialog';
 
 interface Balance {
   debtor: string;
@@ -38,6 +39,7 @@ interface Expense {
   created_at?: string;
   receipt_data?: string;
   receipt_type?: string;
+  recurring_expense_id?: string;
 }
 
 const formatAmount = (amount: number | string) => {
@@ -62,6 +64,7 @@ export default function GroupPage() {
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  const [recurringDetailExpense, setRecurringDetailExpense] = useState<Expense | null>(null);
 
   // Fetch organization members to pass to AddExpenseDialog
   useEffect(() => {
@@ -301,10 +304,14 @@ export default function GroupPage() {
                   return (
                     <Card 
                       key={expense.id} 
-                      className="shadow-sm hover:bg-gray-100 transition-colors border-0 ring-1 ring-gray-200 cursor-pointer overflow-hidden"
+                      className={`shadow-sm hover:bg-gray-100 transition-colors border-0 ring-1 ring-gray-200 cursor-pointer overflow-hidden ${expense.recurring_expense_id ? 'ring-purple-100' : ''}`}
                       onClick={() => {
-                        setEditingExpense(expense);
-                        setIsAddExpenseOpen(true);
+                        if (expense.recurring_expense_id) {
+                          setRecurringDetailExpense(expense);
+                        } else {
+                          setEditingExpense(expense);
+                          setIsAddExpenseOpen(true);
+                        }
                       }}
                     >
                       <CardContent className="flex items-center justify-between p-3 sm:p-4 h-[68px]">
@@ -319,7 +326,15 @@ export default function GroupPage() {
                           </div>
                           
                           <div className="flex-grow min-w-0 overflow-hidden pr-1 sm:pr-4">
-                            <h3 className="font-semibold text-gray-900 truncate text-xs sm:text-base leading-tight">{expense.description}</h3>
+                            <h3 className="font-semibold text-gray-900 truncate text-xs sm:text-base leading-tight flex items-center gap-1">
+                              {expense.recurring_expense_id && (
+                                <RefreshCw size={11} className="text-purple-400 flex-shrink-0 sm:hidden" />
+                              )}
+                              {expense.recurring_expense_id && (
+                                <RefreshCw size={13} className="text-purple-400 flex-shrink-0 hidden sm:inline" />
+                              )}
+                              {expense.description}
+                            </h3>
                             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-1.5 mt-0.5 min-w-0 overflow-hidden">
                               <span className="truncate text-[10px] sm:text-xs text-gray-500 leading-tight block">
                                 <span>{creatorIsMe ? 'você' : creatorStr} pagou </span>
@@ -406,6 +421,34 @@ export default function GroupPage() {
           }
         }}
       />
+
+      {/* Recurring Expense Detail Dialog */}
+      {recurringDetailExpense?.recurring_expense_id && (
+        <RecurringExpenseDetailDialog
+          isOpen={!!recurringDetailExpense}
+          onClose={() => setRecurringDetailExpense(null)}
+          recurringExpenseId={recurringDetailExpense.recurring_expense_id}
+          expenseDescription={recurringDetailExpense.description}
+          currentUserId={user?.id}
+          onEditExpense={() => {
+            setEditingExpense(recurringDetailExpense);
+            setIsAddExpenseOpen(true);
+            setRecurringDetailExpense(null);
+          }}
+          onDataChanged={async () => {
+            if (id && user) {
+              const { expenses: updatedExpenses, balances: updatedBalances } = await getGroupData(
+                id as string,
+                user.id,
+                user.fullName || 'You'
+              );
+              setExpenses(updatedExpenses);
+              setBalances(updatedBalances);
+              router.refresh();
+            }
+          }}
+        />
+      )}
 
       {/* Receipt Viewer Dialog */}
       <Dialog open={!!selectedReceipt} onOpenChange={(open) => !open && setSelectedReceipt(null)}>

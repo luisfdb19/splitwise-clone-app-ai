@@ -268,25 +268,7 @@ export default function AddExpenseDialog({
           splitAmount: isInstallment ? m.splitAmount / count : m.splitAmount
         }));
 
-        // 1. Add the first occurrence to the database immediately
-        const firstResult = await addExpense({
-          amount: finalAmount,
-          description: initialDescription,
-          groupId,
-          splitPercentage: 100,
-          splitWith: firstSplitWith,
-          createdBy: payerId,
-          createdAt: new Date(date + 'T12:00:00').toISOString(),
-          receiptData: receiptData || undefined,
-          receiptType: receiptType || undefined,
-        });
-
-        if (!firstResult.success) {
-          toast({ title: 'Erro', description: 'Falha ao adicionar despesa inicial.', variant: 'destructive' });
-          return;
-        }
-
-        // 2. Set the next occurrence date
+        // 1. Set the next occurrence date
         const nextDate = new Date(date + 'T12:00:00');
         if (recurrenceInterval === 'year') {
           nextDate.setFullYear(nextDate.getFullYear() + 1);
@@ -294,7 +276,7 @@ export default function AddExpenseDialog({
           nextDate.setMonth(nextDate.getMonth() + 1);
         }
 
-        // 3. Create the recurrence rule
+        // 2. Create the recurrence rule FIRST to get the ID
         const ruleResult = await createRecurringExpense({
           groupId,
           amount: finalAmount,
@@ -307,12 +289,31 @@ export default function AddExpenseDialog({
           totalInstallments: totalInst,
         });
 
-        if (ruleResult.success) {
+        if (!ruleResult.success || !ruleResult.id) {
+          toast({ title: 'Erro', description: 'Falha ao agendar recorrência.', variant: 'destructive' });
+          return;
+        }
+
+        // 3. Add the first occurrence linked to the rule
+        const firstResult = await addExpense({
+          amount: finalAmount,
+          description: initialDescription,
+          groupId,
+          splitPercentage: 100,
+          splitWith: firstSplitWith,
+          createdBy: payerId,
+          createdAt: new Date(date + 'T12:00:00').toISOString(),
+          receiptData: receiptData || undefined,
+          receiptType: receiptType || undefined,
+          recurringExpenseId: ruleResult.id,
+        });
+
+        if (firstResult.success) {
           toast({ title: 'Sucesso! 🎉', description: isInstallment ? 'Compra parcelada registrada com sucesso.' : 'Despesa recorrente agendada com sucesso.' });
           onSuccess();
           onClose();
         } else {
-          toast({ title: 'Erro', description: 'Falha ao agendar recorrência.', variant: 'destructive' });
+          toast({ title: 'Erro', description: 'Falha ao adicionar despesa inicial.', variant: 'destructive' });
         }
       } else {
         const result = await addExpense({

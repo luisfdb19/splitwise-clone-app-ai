@@ -26,6 +26,7 @@ interface ExpenseData {
   createdAt?: string;
   receiptData?: string;
   receiptType?: string;
+  recurringExpenseId?: string;
 }
 
 interface Balance {
@@ -51,6 +52,7 @@ interface Expense {
   split_percentage?: number;
   receipt_data?: string;
   receipt_type?: string;
+  recurring_expense_id?: string;
 }
 
 export async function addExpense(expenseData: ExpenseData) {
@@ -64,6 +66,7 @@ export async function addExpense(expenseData: ExpenseData) {
     createdAt,
     receiptData,
     receiptType,
+    recurringExpenseId,
   } = expenseData;
 
   try {
@@ -78,12 +81,12 @@ export async function addExpense(expenseData: ExpenseData) {
     const dateValue = createdAt ? new Date(createdAt) : new Date();
     await sql`
       INSERT INTO expenses (
-        amount, description, group_id, split_percentage, created_by, split_with, created_at, receipt_data, receipt_type
+        amount, description, group_id, split_percentage, created_by, split_with, created_at, receipt_data, receipt_type, recurring_expense_id
       )
       VALUES (
         ${amount}, ${description}, ${groupId}, ${splitPercentage}, ${createdBy}, ${JSON.stringify(
       splitWithInfo
-    )}, ${dateValue}, ${receiptData || null}, ${receiptType || null}
+    )}, ${dateValue}, ${receiptData || null}, ${receiptType || null}, ${recurringExpenseId || null}
       )
     `;
 
@@ -100,7 +103,7 @@ export async function getGroupData(groupId: string, currentUserId: string, curre
     await processRecurringExpenses(groupId);
 
     const expenses = (await sql`
-      SELECT id, amount, description, created_by, split_with, created_at, split_percentage, receipt_data, receipt_type
+      SELECT id, amount, description, created_by, split_with, created_at, split_percentage, receipt_data, receipt_type, recurring_expense_id
       FROM expenses
       WHERE group_id = ${groupId}
       ORDER BY created_at DESC
@@ -421,18 +424,19 @@ export async function createRecurringExpense(data: {
   try {
     const { groupId, amount, description, splitPercentage, splitWith, createdBy, intervalUnit, nextOccurrence, totalInstallments } = data;
     
-    await sql`
+    const result = await sql`
       INSERT INTO recurring_expenses (
         group_id, amount, description, split_percentage, split_with, created_by, interval_unit, next_occurrence, total_installments, current_installment
       )
       VALUES (
         ${groupId}, ${amount}, ${description}, ${splitPercentage}, ${JSON.stringify(splitWith)}::jsonb, ${createdBy}, ${intervalUnit}, ${new Date(nextOccurrence)}, ${totalInstallments}, 2
       )
+      RETURNING id
     `;
-    return { success: true };
+    return { success: true, id: result[0]?.id as string };
   } catch (error) {
     console.error('Error creating recurring expense:', error);
-    return { success: false };
+    return { success: false, id: null };
   }
 }
 
@@ -527,10 +531,10 @@ export async function processRecurringExpenses(groupId: string) {
 
         await sql`
           INSERT INTO expenses (
-            amount, description, group_id, split_percentage, created_by, split_with, created_at
+            amount, description, group_id, split_percentage, created_by, split_with, created_at, recurring_expense_id
           )
           VALUES (
-            ${rule.amount}, ${generatedDesc}, ${rule.group_id}, ${rule.split_percentage}, ${rule.created_by}, ${JSON.stringify(splitWithInfo)}::jsonb, ${nextDate}
+            ${rule.amount}, ${generatedDesc}, ${rule.group_id}, ${rule.split_percentage}, ${rule.created_by}, ${JSON.stringify(splitWithInfo)}::jsonb, ${nextDate}, ${rule.id}
           )
         `;
 
@@ -563,5 +567,52 @@ export async function processRecurringExpenses(groupId: string) {
     }
   } catch (error) {
     console.error('Error processing recurring expenses:', error);
+  }
+}
+
+export async function getRecurringExpenseDetails(recurringExpenseId: string) {
+  try {
+    // Get the recurring rule
+    const rules = await sql`
+      SELECT id, group_id, amount, description, split_percentage, split_with, created_by, interval_unit, next_occurrence, total_installments, current_installment, active, created_at
+      FROM recurring_expenses
+      WHERE id = ${recurringExpenseId}
+    `;
+
+    if (rules.length === 0) {
+      return { rule: null, installments: [] };
+    }
+
+    const rule = rules[0] as {
+      id: string;
+      group_id: string;
+      amount: number;
+      description: string;
+      split_percentage: number;
+      split_with: SplitMember[];
+      created_by: string;
+      interval_unit: 'month' | 'year';
+      next_occurrence: string;
+      total_installments: number | null;
+      current_installment: number;
+      active: boolean;
+      created_at: string;
+    };
+
+    // Get all installments generated from this rule
+    const installments = await sql`
+      SELECT id, description, amount, created_at
+      FROM expenses
+      WHERE recurring_expense_id = ${recurringExpenseId}
+      ORDER BY created_at ASC
+    `;
+
+    return {
+      rule,
+      installments: installments as { id: string; description: string; amount: number; created_at: string }[],
+    };
+  } catch (error) {
+    console.error('Error fetching recurring expense details:', error);
+    return { rule: null, installments: [] };
   }
 }
