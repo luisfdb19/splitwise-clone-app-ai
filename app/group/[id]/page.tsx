@@ -16,6 +16,7 @@ import GroupSettings from '@/components/GroupSettings';
 import SettleUpDialog from '@/components/SettleUpDialog';
 import AddExpenseDialog from '@/components/AddExpenseDialog';
 import RecurringExpenseDetailDialog from '@/components/RecurringExpenseDetailDialog';
+import UserStatement from '@/components/UserStatement';
 
 interface Balance {
   debtor: string;
@@ -215,10 +216,11 @@ export default function GroupPage() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="mb-6 bg-white border shadow-sm">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="members">Members</TabsTrigger>
-          {isAdmin && <TabsTrigger value="settings">Settings</TabsTrigger>}
+        <TabsList className="mb-6 bg-white border shadow-sm flex flex-wrap h-auto">
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="statement">Extrato</TabsTrigger>
+          <TabsTrigger value="members">Membros</TabsTrigger>
+          {isAdmin && <TabsTrigger value="settings">Configurações</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-8">
@@ -389,6 +391,14 @@ export default function GroupPage() {
 
         <TabsContent value="members">
           <GroupMembers isAdmin={isAdmin} />
+        </TabsContent>
+
+        <TabsContent value="statement">
+          {user ? (
+            <UserStatement expenses={expenses} currentUserId={user.id} />
+          ) : (
+            <div className="text-center py-8 text-gray-500">Carregando extrato...</div>
+          )}
         </TabsContent>
 
         {isAdmin && (
