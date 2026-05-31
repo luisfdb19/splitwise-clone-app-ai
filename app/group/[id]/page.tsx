@@ -395,7 +395,7 @@ export default function GroupPage() {
 
         <TabsContent value="statement">
           {user ? (
-            <UserStatement expenses={expenses} currentUserId={user.id} />
+            <UserStatement expenses={expenses} currentUser={{ id: user.id, fullName: user.fullName, firstName: user.firstName }} />
           ) : (
             <div className="text-center py-8 text-gray-500">Carregando extrato...</div>
           )}

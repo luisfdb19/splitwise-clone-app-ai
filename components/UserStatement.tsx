@@ -19,7 +19,7 @@ interface Expense {
 
 interface UserStatementProps {
   expenses: Expense[];
-  currentUserId: string;
+  currentUser: { id: string; fullName: string | null; firstName: string | null } | null | undefined;
 }
 
 const formatAmount = (amount: number) => {
@@ -35,8 +35,25 @@ const formatDate = (dateStr?: string) => {
   });
 };
 
-export default function UserStatement({ expenses, currentUserId }: UserStatementProps) {
+export default function UserStatement({ expenses, currentUser }: UserStatementProps) {
   const statement = useMemo(() => {
+    if (!currentUser) return [];
+
+    const normalizeStr = (str: string) => {
+      return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    };
+
+    const isMe = (nameOrId: string, userId?: string) => {
+      if (userId && userId === currentUser.id) return true;
+      if (nameOrId === currentUser.id) return true;
+      
+      const normalizedTarget = normalizeStr(nameOrId);
+      if (currentUser.fullName && normalizedTarget === normalizeStr(currentUser.fullName)) return true;
+      if (currentUser.firstName && normalizedTarget.includes(normalizeStr(currentUser.firstName))) return true;
+      
+      return false;
+    };
+
     // Sort expenses chronologically (oldest first)
     const sortedExpenses = [...expenses].sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -47,10 +64,16 @@ export default function UserStatement({ expenses, currentUserId }: UserStatement
     let runningBalance = 0;
     
     return sortedExpenses.map(expense => {
-      const amountPaid = expense.created_by === currentUserId ? expense.amount : 0;
-      const amountOwed = expense.split_with.find(m => m.id === currentUserId)?.splitAmount || 0;
+      // Creator gets credited for the sum of all splits (because split_percentage might be < 100%)
+      const creatorSplit = expense.split_with.reduce((sum, member) => sum + member.splitAmount, 0);
+      const amountCredited = isMe(expense.created_by) ? creatorSplit : 0;
       
-      const netImpact = amountPaid - amountOwed;
+      // User owes the sum of their split amounts
+      const amountOwed = expense.split_with.reduce((sum, member) => {
+        return sum + (isMe(member.name, member.id) ? member.splitAmount : 0);
+      }, 0);
+      
+      const netImpact = amountCredited - amountOwed;
       runningBalance += netImpact;
 
       return {
@@ -59,7 +82,7 @@ export default function UserStatement({ expenses, currentUserId }: UserStatement
         runningBalance
       };
     }).filter(item => Math.abs(item.netImpact) > 0.005).reverse(); // Remove 0 impact and reverse to show newest first
-  }, [expenses, currentUserId]);
+  }, [expenses, currentUser]);
 
   if (statement.length === 0) {
     return (
