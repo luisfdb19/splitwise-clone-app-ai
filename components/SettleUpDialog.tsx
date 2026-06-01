@@ -10,7 +10,9 @@ import { useRouter } from 'next/navigation';
 
 interface Balance {
   debtor: string;
+  debtorId?: string;
   creditor: string;
+  creditorId?: string;
   amount: number;
 }
 
@@ -28,40 +30,57 @@ export default function SettleUpDialog({ balances, groupId }: SettleUpDialogProp
 
   if (!user || balances.length === 0) return null;
 
+  const normalizeStr = (str: string) => {
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  };
+
+  const isMe = (name: string, id?: string) => {
+    if (id && id === user.id) return true;
+    if (name === user.id) return true;
+    
+    const normalizedTarget = normalizeStr(name);
+    if (user.fullName && normalizedTarget === normalizeStr(user.fullName)) return true;
+    if (user.firstName && normalizedTarget.includes(normalizeStr(user.firstName))) return true;
+    
+    return false;
+  };
+
+  const shortName = (name: string, id?: string) => {
+    if (isMe(name, id)) return 'você';
+    const parts = name.split(' ');
+    if (parts.length > 1) return `${parts[0]} ${parts[parts.length-1][0]}.`;
+    return name;
+  };
+
   // Find if current user owes anyone
-  const myDebts = balances.filter(b => 
-    b.debtor === user.id || 
-    b.debtor === user.fullName || 
-    (user.firstName && b.debtor.includes(user.firstName))
-  );
+  const myDebts = balances.filter(b => isMe(b.debtor, b.debtorId));
 
   const handleSettle = async (debt: Balance) => {
     setLoading(true);
     try {
-      // Create a payment expense where the debtor pays 100% for the creditor
       const expenseData = {
         amount: debt.amount,
-        description: 'Payment',
+        description: 'Pagamento',
         groupId: groupId,
-        splitPercentage: 100, // Debtor pays 100% for the creditor
+        splitPercentage: 100,
         splitWith: [{
-          id: debt.creditor,
+          id: debt.creditorId || debt.creditor,
           name: debt.creditor,
         }],
-        createdBy: debt.debtor, // The person who owes is the one paying
+        createdBy: debt.debtorId || debt.debtor,
       };
 
       const result = await addExpense(expenseData);
       
       if (result.success) {
-        toast({ title: 'Success', description: 'Debt settled successfully!' });
+        toast({ title: 'Sucesso', description: 'Pagamento registrado com sucesso!' });
         setIsOpen(false);
         router.refresh();
       } else {
-        toast({ title: 'Error', description: 'Failed to settle debt', variant: 'destructive' });
+        toast({ title: 'Erro', description: 'Falha ao registrar pagamento', variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'An unexpected error occurred', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Ocorreu um erro inesperado', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -76,9 +95,9 @@ export default function SettleUpDialog({ balances, groupId }: SettleUpDialogProp
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Settle Up</DialogTitle>
+          <DialogTitle>Acertar contas</DialogTitle>
           <DialogDescription>
-            Record a payment to settle your balances.
+            Registre um pagamento para quitar seus saldos.
           </DialogDescription>
         </DialogHeader>
 
@@ -87,29 +106,29 @@ export default function SettleUpDialog({ balances, groupId }: SettleUpDialogProp
             myDebts.map((debt, idx) => (
               <div key={idx} className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
                 <div>
-                  <p className="font-medium text-gray-900">Pay {debt.creditor}</p>
-                  <p className="text-lg font-bold text-teal-600">R${debt.amount.toFixed(2)}</p>
+                  <p className="font-medium text-gray-900">Pagar {shortName(debt.creditor, debt.creditorId)}</p>
+                  <p className="text-lg font-bold text-teal-600">R${parseFloat(debt.amount.toString()).toFixed(2)}</p>
                 </div>
                 <Button 
                   onClick={() => handleSettle(debt)} 
                   disabled={loading}
                   className="bg-teal-500 hover:bg-teal-600"
                 >
-                  {loading ? 'Processing...' : 'Record Payment'}
+                  {loading ? 'Processando...' : 'Registrar'}
                 </Button>
               </div>
             ))
           ) : (
-            <p className="text-center text-gray-500 py-4">You do not owe anything right now! 🎉</p>
+            <p className="text-center text-gray-500 py-4">Você não deve nada agora! 🎉</p>
           )}
 
           {myDebts.length === 0 && balances.length > 0 && (
             <div className="mt-4 pt-4 border-t">
-              <p className="text-sm text-gray-500 mb-2">Other pending balances in the group:</p>
+              <p className="text-sm text-gray-500 mb-2">Outros saldos pendentes no grupo:</p>
               {balances.filter(b => !myDebts.includes(b)).map((b, idx) => (
                 <div key={idx} className="flex justify-between text-sm py-1">
-                  <span>{b.debtor} owes {b.creditor}</span>
-                  <span className="font-medium">R${b.amount.toFixed(2)}</span>
+                  <span>{shortName(b.debtor, b.debtorId)} deve a {shortName(b.creditor, b.creditorId)}</span>
+                  <span className="font-medium">R${parseFloat(b.amount.toString()).toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -117,7 +136,7 @@ export default function SettleUpDialog({ balances, groupId }: SettleUpDialogProp
         </div>
         
         <DialogFooter>
-          <Button variant="outline" onClick={() => setIsOpen(false)}>Close</Button>
+          <Button variant="outline" onClick={() => setIsOpen(false)}>Fechar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
